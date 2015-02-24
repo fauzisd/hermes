@@ -44,9 +44,11 @@ namespace Hermes
 
         MeshView(const char* title = "MeshView", WinGeom* wg = NULL);
         MeshView(char* title, WinGeom* wg = NULL);
-        virtual ~MeshView();
+        ~MeshView();
 
-        void show(Mesh* mesh);
+        void show (Mesh* mesh);
+        /// Displays element markers.
+        void set_b_elem_mrk(bool set);
 
       protected:
 
@@ -72,6 +74,15 @@ namespace Hermes
         virtual const char* get_help_text() const;
 
         Mesh* mesh;
+      };
+#else
+      class HERMES_API MeshView : public View
+      {
+      public:
+
+        MeshView(const char* title = "MeshView", WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        MeshView(char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void show(Mesh* mesh) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
       };
 #endif
     }

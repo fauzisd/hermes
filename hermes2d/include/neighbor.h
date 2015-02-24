@@ -1,5 +1,5 @@
-#ifndef NEIGHBOR_H_
-#define NEIGHBOR_H_
+#ifndef __H2D_NEIGHBOR_H
+#define __H2D_NEIGHBOR_H
 
 #include "mesh/mesh.h"
 #include "quadrature/quad.h"
@@ -74,7 +74,7 @@ namespace Hermes
       /// \param[in]  el    Central element of the neighborhood (current active element in the assembling procedure).
       /// \param[in]  mesh  Mesh on which we search for the neighbors.
       ///
-      NeighborSearch(Element* el, Mesh* mesh);
+      NeighborSearch(Element* el, const Mesh* mesh);
       NeighborSearch(const NeighborSearch& ns);
 
       /// Destructor.
@@ -105,13 +105,13 @@ namespace Hermes
       void set_active_edge(int edge);
 
       /// Enhancement of set_active_edge for multimesh assembling.
-      void set_active_edge_multimesh(const int& edge);
+      bool set_active_edge_multimesh(const int& edge);
 
       /// Extract transformations in the correct direction from the provided sub_idx.
-      Hermes::vector<unsigned int> get_transforms(uint64_t sub_idx);
+      Hermes::vector<unsigned int> get_transforms(uint64_t sub_idx) const;
 
       /// Gives an info if edge is an intra- or inter- element edge.
-      bool is_inter_edge(const int& edge, const Hermes::vector<unsigned int>& transformations);
+      bool is_inter_edge(const int& edge, const Hermes::vector<unsigned int>& transformations) const;
 
       /// Update according to the subelement mapping of the central element.
       void update_according_to_sub_idx(const Hermes::vector<unsigned int>& transformations);
@@ -121,7 +121,7 @@ namespace Hermes
 
       /// Give the info if the two transformations are correct, w.r.t. the edge.
       /// Simply compares a to b in case of triangles, does more work in case of quads.
-      bool compatible_transformations(unsigned int a, unsigned int b, int edge);
+      bool compatible_transformations(unsigned int a, unsigned int b, int edge) const;
 
       /// Clear the initial_sub_idxs from the central element transformations of NeighborSearches with multiple neighbors.
       /// Does nothing in the opposite case.
@@ -152,8 +152,8 @@ namespace Hermes
       /// \param[in]  al    Assembly list for the central element.
       /// \return     Number of shape functions in the extended shapeset (sum of central and neighbor elems' local counts).
       ///
-      ExtendedShapeset* create_extended_asmlist(Space<Scalar>* space, AsmList<Scalar>* al);
-      ExtendedShapeset* create_extended_asmlist_multicomponent(Space<Scalar>* space, AsmList<Scalar>* al);
+      ExtendedShapeset* create_extended_asmlist(const Space<Scalar>* space, AsmList<Scalar>* al);
+      ExtendedShapeset* create_extended_asmlist_multicomponent(const Space<Scalar>* space, AsmList<Scalar>* al);
 
       /*** Methods for working with quadrature on the active edge. ***/
 
@@ -182,7 +182,7 @@ namespace Hermes
       ///
       /// \return pointer to the vector of neighboring elements.
       ///
-      Hermes::vector<Element*>* get_neighbors();
+      const Hermes::vector<Element*>* get_neighbors() const;
 
       /// Frees the memory occupied by the extended shapeset.
       void clear_supported_shapes();
@@ -201,7 +201,7 @@ namespace Hermes
         /// \param[in]  central_al    Assembly list for the currently assembled edge on the central element.
         /// \param[in]  space         Space from which the neighbor's assembly list will be obtained.
         ///
-        ExtendedShapeset(NeighborSearch<Scalar>* neighborhood, AsmList<Scalar>* central_al, Space<Scalar>*space);
+        ExtendedShapeset(NeighborSearch<Scalar>* neighborhood, AsmList<Scalar>* central_al, const Space<Scalar>*space);
 
         ExtendedShapeset(const ExtendedShapeset & other);
 
@@ -218,7 +218,7 @@ namespace Hermes
         /// \param[in]  neighborhood  Neighborhood on which the extended shapeset is defined.
         /// \param[in]  space         Space from which the neighbor's assembly list will be obtained.
         ///
-        void update(NeighborSearch* neighborhood, Space<Scalar>* space);
+        void update(NeighborSearch* neighborhood, const Space<Scalar>* space);
 
       public:
         int cnt;  ///< Number of shape functions in the extended shapeset.
@@ -237,13 +237,12 @@ namespace Hermes
       class NeighborEdgeInfo
       {
       public:
-        NeighborEdgeInfo() : local_num_of_edge(-1), orientation(-1) {};
+        NeighborEdgeInfo() : local_num_of_edge(-1), orientation(false) {};
 
         int local_num_of_edge;  ///< Local number of the edge on neighbor element.
-        int orientation;        ///< Relative orientation of the neighbor edge with respect to the active edge
+        bool orientation;        ///< Relative orientation of the neighbor edge with respect to the active edge
                                 ///< (0 - same orientation, 1 - reverse orientation).
       };
-
 
       /// When creating sparse structure of a matrix using this class, we want to ignore errors
       /// and do nothing instead when set_active_edge() function is called for a non-boundary edge.
@@ -276,7 +275,7 @@ namespace Hermes
       /// Transformations of an element to one of its neighbors.
       struct Transformations
       {
-      private:
+      public:
         static const int max_level = Transformable::H2D_MAX_TRN_LEVEL; ///< Number of allowed transformations (or equiv. number of neighbors
                                                                        ///< in a go-down neighborhood) - see Transformable::push_transform.
 
@@ -300,19 +299,19 @@ namespace Hermes
         void apply_on(Transformable* tr) const;
 
         void apply_on(const Hermes::vector<Transformable*>& tr) const;
-        
+
         template<typename T> friend class NeighborSearch;
         template<typename T> friend class KellyTypeAdapt;
         template<typename T> friend class Adapt;
         template<typename T> friend class Func;
         template<typename T> friend class DiscontinuousFunc;
         template<typename T> friend class DiscreteProblem;
+        template<typename T> friend class DiscreteProblemLinear;
       };
-
 
     private:
 
-      Mesh* mesh;
+      const Mesh* mesh;
 
       /*** Transformations. ***/
 
@@ -328,11 +327,9 @@ namespace Hermes
       Element* central_el;          ///< Central (currently assembled) element.
       Element* neighb_el;           ///< Currently selected neighbor element (on the other side of active segment).
 
-
       int active_edge;               ///< Local number of the currently assembled edge, w.r.t. the central element.
       NeighborEdgeInfo neighbor_edge;///< Assembled edge, w.r.t. the element on the other side.
       int active_segment;            ///< Part of the active edge shared by central and neighbor elements.
-
 
       Hermes::vector<NeighborEdgeInfo> neighbor_edges;   ///< Active edge information from each neighbor.
       Hermes::vector<Element*> neighbors;                ///< Vector with pointers to the neighbor elements.
@@ -388,7 +385,6 @@ namespace Hermes
       ///
       void find_act_elem_down( Node* vertex, int* bounding_verts_id, int* sons, unsigned int n_sons);
 
-
       /// Determine relative orientation of the neighbor edge w.r.t. the active edge.
       ///
       /// When this method is called from \c find_act_elem_up, \c bounding_vert1 and \c bounding_vert2 represent vertices
@@ -407,7 +403,7 @@ namespace Hermes
       /// \return 1 if the orientation of the neighbor's edge is reversed w.r.t. the central el.'s edge,
       ///         0 otherwise.
       ///
-      int neighbor_edge_orientation(int bounding_vert1, int bounding_vert2, int segment);
+      bool neighbor_edge_orientation(int bounding_vert1, int bounding_vert2, int segment) const;
 
       /// Cleaning of internal structures before a new edge is set as active.
       void reset_neighb_info();
@@ -423,6 +419,7 @@ namespace Hermes
       template<typename T> friend class Func;
       template<typename T> friend class DiscontinuousFunc;
       template<typename T> friend class DiscreteProblem;
+      template<typename T> friend class DiscreteProblemLinear;
     };
   }
 }

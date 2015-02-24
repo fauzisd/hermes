@@ -38,16 +38,24 @@ namespace Hermes
 
       try
       {
-        std::auto_ptr<XMLMesh1D::mesh> parsed_xml_mesh(XMLMesh1D::mesh_(filename));
+        ::xml_schema::flags parsing_flags = 0;
+        if(!this->validate)
+          parsing_flags = xml_schema::flags::dont_validate;
+
+        std::auto_ptr<XMLMesh1D::mesh> parsed_xml_mesh(XMLMesh1D::mesh_(filename, parsing_flags));
 
         // Variables //
-        unsigned int variables_count = parsed_xml_mesh->variables().present() ? parsed_xml_mesh->variables()->variable().size() : 0;
+        unsigned int variables_count = parsed_xml_mesh->variables().present() ? parsed_xml_mesh->variables()->var().size() : 0;
         std::map<std::string, double> variables;
         for (unsigned int variables_i = 0; variables_i < variables_count; variables_i++)
-          variables.insert(std::make_pair<std::string, double>(parsed_xml_mesh->variables()->variable().at(variables_i).name(), parsed_xml_mesh->variables()->variable().at(variables_i).value()));
+#ifdef _MSC_VER
+				variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_mesh->variables()->var().at(variables_i).name(), (double&&)parsed_xml_mesh->variables()->var().at(variables_i).value()));
+#else
+				variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_mesh->variables()->var().at(variables_i).name(), parsed_xml_mesh->variables()->var().at(variables_i).value()));
+#endif
 
         // Vertices //
-        int vertices_count = parsed_xml_mesh->vertex().size();
+        int vertices_count = parsed_xml_mesh->v().size();
 
         // Initialize mesh.
         int size = HashTable::H2D_DEFAULT_HASH_SIZE;
@@ -70,7 +78,7 @@ namespace Hermes
           node->next_hash = NULL;
 
           // variables matching.
-          std::string x = parsed_xml_mesh->vertex().at(vertices_i % vertices_count).x();
+          std::string x = parsed_xml_mesh->v().at(vertices_i % vertices_count).x();
           double x_value;
 
           // variables lookup.
@@ -91,10 +99,10 @@ namespace Hermes
               int dot_position = strchr(x.c_str(), '.') == NULL ? -1 : strchr(x.c_str(), '.') - x.c_str();
               for(int i = 0; i < dot_position; i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertices_i % vertices_count + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertices_i % vertices_count + 1);
               for(int i = dot_position + 1; i < x.length(); i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertices_i % vertices_count + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertices_i % vertices_count + 1);
               x_value = std::strtod(x.c_str(), NULL);
             }
 
@@ -128,10 +136,10 @@ namespace Hermes
           mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, "H1DMarker");
 
           int element_marker;
-          if(parsed_xml_mesh->vertex().at(element_i % vertices_count).marker().present())
+          if(parsed_xml_mesh->v().at(element_i % vertices_count).m().present())
           {
-            mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, parsed_xml_mesh->vertex().at(element_i % vertices_count).marker().get());
-            element_marker = mesh->element_markers_conversion.get_internal_marker(parsed_xml_mesh->vertex().at(element_i % vertices_count).marker().get()).marker;
+            mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, parsed_xml_mesh->v().at(element_i % vertices_count).m().get());
+            element_marker = mesh->element_markers_conversion.get_internal_marker(parsed_xml_mesh->v().at(element_i % vertices_count).m().get()).marker;
           }
           else
             element_marker = mesh->element_markers_conversion.get_internal_marker("H1DMarker").marker;
@@ -186,12 +194,10 @@ namespace Hermes
 
         mesh->nodes[v1_2].bnd = 1;
         mesh->nodes[v2_2].bnd = 1;
-
       }
       catch (const xml_schema::exception& e)
       {
-        std::cerr << e << std::endl;
-        std::exit(1);
+        throw Hermes::Exceptions::MeshLoadFailureException(e.what());
       }
     }
 

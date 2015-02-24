@@ -17,15 +17,12 @@
 #define __H2D_INTEGRALS_HCURL_H
 
 #include "../quadrature/limit_order.h"
-#include "../forms.h"
-#include "../function/function.h"
 #include "../weakform/weakform.h"
 
 namespace Hermes
 {
   namespace Hermes2D
   {
-
     template<typename Real, typename Scalar>
     Scalar int_e_f(int n, double *wt, Func<Real> *u, Func<Real> *v)
     {
@@ -41,21 +38,35 @@ namespace Hermes
     public:
       // One area.
       MatrixFormVolHCurl(unsigned int i, unsigned int j, std::string area = HERMES_ANY,
-        SymFlag sym = HERMES_SYM) : MatrixFormVol<Scalar>(i, j, area, sym) { }
+        SymFlag sym = HERMES_NONSYM) : MatrixFormVol<Scalar>(i, j) 
+      {
+        this->set_area(area);
+        this->setSymFlag(sym);
+      }
+
       // Multiple areas.
       MatrixFormVolHCurl(unsigned int i, unsigned int j, Hermes::vector<std::string> areas,
-        SymFlag sym = HERMES_SYM) : MatrixFormVol<Scalar>(i, j, areas, sym) { }
+        SymFlag sym = HERMES_NONSYM) : MatrixFormVol<Scalar>(i, j) 
+      {
+        this->set_areas(areas);
+        this->setSymFlag(sym);
+      }
 
       virtual Scalar value(int n, double *wt, Func<Scalar> *u_ext[], Func<double> *u, Func<double> *v,
-        Geom<double> *e, ExtData<Scalar> *ext) const
+        Geom<double> *e, Func<Scalar> **ext) const
       {
         return int_e_f<double, Scalar>(n, wt, u, v);
       }
 
       virtual Hermes::Ord ord(int n, double *wt, Func<Hermes::Ord> *u_ext[], Func<Hermes::Ord> *u, Func<Hermes::Ord> *v,
-        Geom<Hermes::Ord> *e, ExtData<Hermes::Ord> *ext) const
+        Geom<Hermes::Ord> *e, Func<Ord> **ext) const
       {
         return int_e_f<Hermes::Ord, Hermes::Ord>(n, wt, u, v);
+      }
+
+      MatrixFormVol<Scalar>* clone() const
+      {
+        return new MatrixFormVolHCurl<Scalar>(*this);
       }
     };
 
@@ -107,4 +118,3 @@ namespace Hermes
   }
 }
 #endif
-

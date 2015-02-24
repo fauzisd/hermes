@@ -23,12 +23,22 @@
 #define __HERMES_COMMON_MATRIX_H
 
 #include "common.h"
-#include "error.h"
-
-using namespace Hermes::Error;
+#include "vector.h"
+#include "exceptions.h"
+#include "mixins.h"
 
 namespace Hermes
 {
+  enum MatrixSolverType
+  {
+    SOLVER_UMFPACK = 0,
+    SOLVER_PETSC,
+    SOLVER_MUMPS,
+    SOLVER_SUPERLU,
+    SOLVER_AMESOS,
+    SOLVER_AZTECOO
+  };
+
   /// \brief Namespace containing classes for vector / matrix operations.
   namespace Algebra
   {
@@ -41,9 +51,8 @@ namespace Hermes
       template<typename T>
       T **new_matrix(unsigned int m, unsigned int n = 0)
       {
-        if (!n) n = m;
+        if(!n) n = m;
         T **vec = (T **) new char[sizeof(T *) * m + sizeof(T) * m * n];
-        MEM_CHECK(vec);
         memset(vec, 0, sizeof(T *) * m + sizeof(T) * m * n);
         T *row = (T *) (vec + m);
         for (unsigned int i = 0; i < m; i++, row += n) vec[i] = row;
@@ -53,9 +62,8 @@ namespace Hermes
       template<typename T>
       T **new_matrix_malloc(unsigned int m, unsigned int n = 0)
       {
-        if (!n) n = m;
+        if(!n) n = m;
         T **vec = (T **) malloc(sizeof(T *) * m + sizeof(T) * m * n);
-        MEM_CHECK(vec);
         memset(vec, 0, sizeof(T *) * m + sizeof(T) * m * n);
         T *row = (T *) (vec + m);
         for (unsigned int i = 0; i < m; i++, row += n) vec[i] = row;
@@ -67,7 +75,7 @@ namespace Hermes
       template<typename T>
       void copy_matrix(T** dest, T** src, unsigned int m, unsigned int n = 0)
       {
-        if (n == 0) n = m;
+        if(n == 0) n = m;
         for(unsigned int i = 0; i < m; i++)
         {
           memcpy(dest[i], src[i], n*sizeof(T));
@@ -83,18 +91,18 @@ namespace Hermes
       template<typename T>
       void save_matrix_octave(const std::string& matrix_name, T** matrix, unsigned int m, unsigned int n = 0, const std::string& filename = std::string())
       {
-        if (n == 0) n = m;
+        if(n == 0) n = m;
 
         //create filename
         std::string fname = filename;
-        if (fname.empty())
+        if(fname.empty())
           fname = matrix_name + ".mat";
 
         //open file
         std::ofstream fout(fname.c_str());
-        if (!fout.is_open())
+        if(!fout.is_open())
         {
-          error("Unable to save a matrix to a file \"%s\"", fname.c_str());
+          throw Hermes::Exceptions::Exception("Unable to save a matrix to a file \"%s\"", fname.c_str());
           return;
         }
 
@@ -123,14 +131,14 @@ namespace Hermes
       {
         // create filename
         std::string fname = filename;
-        if (fname.empty())
+        if(fname.empty())
           fname = matrix_name + ".mat";
 
         // open file
         std::ofstream fout(fname.c_str());
-        if (!fout.is_open())
+        if(!fout.is_open())
         {
-          error("Unable to save a matrix to a file \"%s\"", fname.c_str());
+          throw Hermes::Exceptions::Exception("Unable to save a matrix to a file \"%s\"", fname.c_str());
           return;
         }
 
@@ -160,11 +168,11 @@ namespace Hermes
           for (unsigned int j = i + 1; j < min; j++)
             std::swap(matrix[i][j], matrix[j][i]);
 
-        if (m < n)
+        if(m < n)
           for (unsigned int i = 0; i < m; i++)
             for (unsigned int j = m; j < n; j++)
               matrix[j][i] = matrix[i][j];
-        else if (n < m)
+        else if(n < m)
           for (unsigned int i = n; i < m; i++)
             for (unsigned int j = 0; j < n; j++)
               matrix[j][i] = matrix[i][j];
@@ -265,13 +273,12 @@ namespace Hermes
       /// \brief Hermes binary format
       ///
       DF_HERMES_BIN,
-      DF_NATIVE, 	 ///< native format for the linear solver,
       DF_MATRIX_MARKET ///< Matrix Market which can be read by pysparse library
     };
 
     /// \brief General (abstract) matrix representation in Hermes.
     template<typename Scalar>
-    class HERMES_API Matrix
+    class HERMES_API Matrix : public Hermes::Mixins::Loggable
     {
     public:
       /// get size of matrix
@@ -325,7 +332,7 @@ namespace Hermes
       /// @param[in] var_name name of variable (will be written to output file)
       /// @param[in] fmt output file format
       /// @return true on succes
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE) = 0;
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf") = 0;
 
       /// Get size of matrix
       /// @return size of matrix
@@ -366,7 +373,7 @@ namespace Hermes
       /// @param mat matrix to add
       virtual void add_sparse_matrix(SparseMatrix* mat)
       {
-        error("add_sparse_matrix() undefined.");
+        throw Hermes::Exceptions::Exception("add_sparse_matrix() undefined.");
       };
 
       /// Add matrix to diagonal
@@ -375,7 +382,7 @@ namespace Hermes
       /// @param[in] mat added matrix
       virtual void add_sparse_to_diagonal_blocks(int num_stages, SparseMatrix<Scalar>* mat)
       {
-        error("add_sparse_to_diagonal_blocks() undefined.");
+        throw Hermes::Exceptions::Exception("add_sparse_to_diagonal_blocks() undefined.");
       };
 
       /// Return the number of entries in a specified row
@@ -414,12 +421,12 @@ namespace Hermes
 
       /// Multiply with a vector.
       virtual void multiply_with_vector(Scalar* vector_in, Scalar* vector_out) {
-        error("multiply_with_vector() undefined.");
+        throw Hermes::Exceptions::Exception("multiply_with_vector() undefined.");
       };
 
       /// Multiply with a Scalar.
       virtual void multiply_with_Scalar(Scalar value) {
-        error("multiply_with_Scalar() undefined.");
+        throw Hermes::Exceptions::Exception("multiply_with_Scalar() undefined.");
       };
 
       /// Duplicate sparse matrix (including allocation).
@@ -434,7 +441,7 @@ namespace Hermes
       /// get number of nonzero numbers in matrix
       /// @return number of nonzero numbers in matrix
       virtual unsigned int get_nnz() const {
-        error("get_nnz() undefined.");
+        throw Hermes::Exceptions::Exception("get_nnz() undefined.");
         return 0;
       }
 
@@ -472,7 +479,8 @@ namespace Hermes
 
     /// \brief General (abstract) vector representation in Hermes.
     template<typename Scalar>
-    class HERMES_API Vector {
+    class HERMES_API Vector : public Hermes::Mixins::Loggable
+    {
     public:
       virtual ~Vector() { }
 
@@ -525,7 +533,7 @@ namespace Hermes
       virtual void add(unsigned int n, unsigned int *idx, Scalar *y) = 0;
 
       /// Get vector length.
-      unsigned int length() {return this->size;}
+      unsigned int length() const {return this->size;}
 
       /// Write to file.
       /// @param[in] file file handle
@@ -533,7 +541,7 @@ namespace Hermes
       /// @param[in] fmt output file format
       /// @return true on succes
       virtual bool dump(FILE *file, const char *var_name,
-        EMatrixDumpFormat fmt = DF_MATLAB_SPARSE) = 0;
+        EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf") = 0;
 
     protected:
       /// size of vector
@@ -541,17 +549,14 @@ namespace Hermes
     };
 
     /// \brief Function returning a vector according to the users's choice.
-    /// @param[in] matrix_solver_type the choice of solver, an element of enum Hermes::MatrixSolverType.
     /// @return created vector
     template<typename Scalar> HERMES_API
-      Vector<Scalar>* create_vector(Hermes::MatrixSolverType matrix_solver_type);
+      Vector<Scalar>* create_vector();
 
     /// \brief Function returning a matrix according to the users's choice.
-    /// @param[in] matrix_solver_type the choice of solver, an element of enum Hermes::MatrixSolverType.
     /// @return created matrix
     template<typename Scalar> HERMES_API
-      SparseMatrix<Scalar>*  create_matrix(Hermes::MatrixSolverType matrix_solver_type);
-
+      SparseMatrix<Scalar>*  create_matrix();
   }
 }
 #endif

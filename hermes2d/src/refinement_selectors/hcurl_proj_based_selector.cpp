@@ -1,4 +1,4 @@
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "matrix.h"
 #include "solution.h"
 #include "shapeset/shapeset_hc_all.h"
@@ -10,30 +10,49 @@ namespace Hermes
   {
     namespace RefinementSelectors
     {
-      HcurlShapeset HcurlProjBasedSelector::default_shapeset;
+      template<typename Scalar>
+      const int HcurlProjBasedSelector<Scalar>::H2DRS_MAX_HCURL_ORDER = 6;
 
-      const int HcurlProjBasedSelector::H2DRS_MAX_HCURL_ORDER = 6;
-
-      HcurlProjBasedSelector::HcurlProjBasedSelector(CandList cand_list, double conv_exp, int max_order, HcurlShapeset* user_shapeset)
-        : ProjBasedSelector<std::complex<double> >(cand_list, conv_exp, max_order, user_shapeset == NULL ? &default_shapeset : user_shapeset, OptimumSelector<std::complex<double> >::Range(), OptimumSelector<std::complex<double> >::Range(0, H2DRS_MAX_HCURL_ORDER))
-        , precalc_rvals_curl(NULL) {}
-
-      HcurlProjBasedSelector::~HcurlProjBasedSelector()
+      template<typename Scalar>
+      HcurlProjBasedSelector<Scalar>::HcurlProjBasedSelector(CandList cand_list, double conv_exp, int max_order, HcurlShapeset* user_shapeset)
+        : ProjBasedSelector<Scalar>(cand_list, conv_exp, max_order, user_shapeset == NULL ? new HcurlShapeset() : user_shapeset, typename OptimumSelector<Scalar>::Range(), typename OptimumSelector<Scalar>::Range(0, H2DRS_MAX_HCURL_ORDER))
+        , precalc_rvals_curl(NULL)
       {
-        delete[] precalc_rvals_curl;
+        if(user_shapeset != NULL)
+        {
+          this->warn("Warning: The user shapeset provided for the selector has to have a correct copy constructor implemented.");
+          this->warn("Warning: The functionality for cloning user shapeset is to be implemented yet.");
+        }
       }
 
-      void HcurlProjBasedSelector::set_current_order_range(Element* element)
+      template<typename Scalar>
+      Selector<Scalar>* HcurlProjBasedSelector<Scalar>::clone()
       {
-        current_max_order = this->max_order;
-        if (current_max_order == H2DRS_DEFAULT_ORDER)
-          current_max_order = std::min(H2DRS_MAX_HCURL_ORDER, (20 - element->iro_cache)/2 - 1); // default
+        HcurlProjBasedSelector* newSelector = new HcurlProjBasedSelector(this->cand_list, this->conv_exp, this->max_order);
+        newSelector->set_error_weights(this->error_weight_h, this->error_weight_p, this->error_weight_aniso);
+        newSelector->isAClone = true;
+        return newSelector;
+      }
+
+      template<typename Scalar>
+      HcurlProjBasedSelector<Scalar>::~HcurlProjBasedSelector()
+      {
+        delete [] precalc_rvals_curl;
+      }
+
+      template<typename Scalar>
+      void HcurlProjBasedSelector<Scalar>::set_current_order_range(Element* element)
+      {
+        this->current_max_order = this->max_order;
+        if(this->current_max_order == H2DRS_DEFAULT_ORDER)
+          this->current_max_order = std::min(H2DRS_MAX_HCURL_ORDER, (20 - element->iro_cache)/2 - 1); // default
         else
-          current_max_order = std::min(max_order, (20 - element->iro_cache)/2 - 1); // user specified
-        current_min_order = 0;
+          this->current_max_order = std::min(this->max_order, (20 - element->iro_cache)/2 - 1); // user specified
+        this->current_min_order = 0;
       }
 
-      void HcurlProjBasedSelector::precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<ShapeInx>& shapes, const int max_shape_inx, TrfShape& svals)
+      template<typename Scalar>
+      void HcurlProjBasedSelector<Scalar>::precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals, ElementMode2D mode)
       {
         //for all transformations
         bool done = false;
@@ -42,7 +61,7 @@ namespace Hermes
         {
           //prepare data for processing
           const Trf& trf = trfs[inx_trf];
-          Hermes::vector<TrfShapeExp>& trf_svals = svals[inx_trf];
+          Hermes::vector<typename ProjBasedSelector<Scalar>::TrfShapeExp>& trf_svals = svals[inx_trf];
 
           //allocate
           trf_svals.resize(max_shape_inx + 1);
@@ -52,7 +71,7 @@ namespace Hermes
           for(int i = 0; i < num_shapes; i++)
           {
             int inx_shape = shapes[i].inx;
-            TrfShapeExp& shape_exp = trf_svals[inx_shape];
+            typename ProjBasedSelector<Scalar>::TrfShapeExp& shape_exp = trf_svals[inx_shape];
 
             //allocate
             shape_exp.allocate(H2D_HCFE_NUM, num_gip_points);
@@ -65,29 +84,31 @@ namespace Hermes
               double ref_y = gip_points[k][H2D_GIP2D_Y] * trf.m[1] + trf.t[1];
 
               //for all expansions: retrieve values
-              shape_exp[H2D_HCFE_VALUE0][k] = shapeset->get_fn_value(inx_shape, ref_x, ref_y, 0);
-              shape_exp[H2D_HCFE_VALUE1][k] = shapeset->get_fn_value(inx_shape, ref_x, ref_y, 1);
-              shape_exp[H2D_HCFE_CURL][k] = shapeset->get_dx_value(inx_shape, ref_x, ref_y, 1) - shapeset->get_dy_value(inx_shape, ref_x, ref_y, 0);
+              shape_exp[H2D_HCFE_VALUE0][k] = this->shapeset->get_fn_value(inx_shape, ref_x, ref_y, 0, mode);
+              shape_exp[H2D_HCFE_VALUE1][k] = this->shapeset->get_fn_value(inx_shape, ref_x, ref_y, 1, mode);
+              shape_exp[H2D_HCFE_CURL][k] = this->shapeset->get_dx_value(inx_shape, ref_x, ref_y, 1, mode) - this->shapeset->get_dy_value(inx_shape, ref_x, ref_y, 0, mode);
             }
           }
 
           //move to the next transformation
-          if (inx_trf == H2D_TRF_IDENTITY)
+          if(inx_trf == H2D_TRF_IDENTITY)
             done = true;
           else
           {
             inx_trf++;
-            if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+            if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
               inx_trf = H2D_TRF_IDENTITY;
           }
         }
-        error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+        if(!done)
+              throw Exceptions::Exception("All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
       }
 
-      void HcurlProjBasedSelector::precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<ShapeInx>& shapes, const int max_shape_inx, TrfShape& svals)
+      template<typename Scalar>
+      void HcurlProjBasedSelector<Scalar>::precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals, ElementMode2D mode)
       {
         //calculate values
-        precalc_shapes(gip_points, num_gip_points, trfs, num_noni_trfs, shapes, max_shape_inx, svals);
+        precalc_shapes(gip_points, num_gip_points, trfs, num_noni_trfs, shapes, max_shape_inx, svals, mode);
 
         //calculate orthonormal basis
         const int num_shapes = (int)shapes.size();
@@ -125,16 +146,17 @@ namespace Hermes
               }
 
               //move to the next transformation
-              if (inx_trf == H2D_TRF_IDENTITY)
+              if(inx_trf == H2D_TRF_IDENTITY)
                 done = true;
               else
               {
                 inx_trf++;
-                if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+                if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
                   inx_trf = H2D_TRF_IDENTITY;
               }
             }
-            error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+            if(!done)
+              throw Exceptions::Exception("All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
           }
 
           //normalize
@@ -149,7 +171,8 @@ namespace Hermes
             norm_squared += gip_points[k][H2D_GIP2D_W] * sum;
           }
           double norm = sqrt(norm_squared);
-          assert_msg(finite(1/norm), "Norm (%g) is almost zero.", norm);
+          if(!finite(1/norm))
+            throw Exceptions::Exception("Norm (%g) is almost zero.", norm);
 
           //for all transformations: normalize
           int inx_trf = 0;
@@ -165,39 +188,38 @@ namespace Hermes
             }
 
             //move to the next transformation
-            if (inx_trf == H2D_TRF_IDENTITY)
+            if(inx_trf == H2D_TRF_IDENTITY)
               done = true;
             else
             {
               inx_trf++;
-              if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+              if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
                 inx_trf = H2D_TRF_IDENTITY;
             }
           }
-          error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+          if(!done)
+            throw Exceptions::Exception("All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
         }
       }
 
-      std::complex<double>** HcurlProjBasedSelector::precalc_ref_solution(int inx_son, Solution<std::complex<double> >* rsln, Element* element, int intr_gip_order)
+      template<typename Scalar>
+      Scalar** HcurlProjBasedSelector<Scalar>::precalc_ref_solution(int inx_son, Solution<Scalar>* rsln, Element* element, int intr_gip_order)
       {
-        //set element and integration order
-        rsln->set_active_element(element);
-        rsln->set_quad_order(intr_gip_order);
-        const int num_gip = rsln->get_quad_2d()->get_num_points(intr_gip_order);
+        const int num_gip = rsln->get_quad_2d()->get_num_points(intr_gip_order, rsln->get_active_element()->get_mode());
 
         //allocate space for Curl
-        if (precalc_rvals_curl == NULL)
-          precalc_rvals_curl = new_matrix<std::complex<double> >(H2D_MAX_ELEMENT_SONS, num_gip);
+        if(precalc_rvals_curl == NULL)
+          precalc_rvals_curl = new_matrix<Scalar>(H2D_MAX_ELEMENT_SONS, num_gip);
 
         //prepre for curl
-        std::complex<double>* curl = precalc_rvals_curl[inx_son];
-        std::complex<double>* d1dx = rsln->get_dx_values(1);
-        std::complex<double>* d0dy = rsln->get_dy_values(0);
+        Scalar* curl = precalc_rvals_curl[inx_son];
+        Scalar* d1dx = rsln->get_dx_values(1);
+        Scalar* d0dy = rsln->get_dy_values(0);
         for(int i = 0; i < num_gip; i++)
           curl[i] = d1dx[i] - d0dy[i];
 
         //fill with values
-        std::complex<double>** rvals_son = precalc_rvals[inx_son];
+        Scalar** rvals_son = precalc_rvals[inx_son];
         rvals_son[H2D_HCFE_VALUE0] = rsln->get_fn_values(0);
         rvals_son[H2D_HCFE_VALUE1] = rsln->get_fn_values(1);
         rvals_son[H2D_HCFE_CURL] = curl;
@@ -205,8 +227,9 @@ namespace Hermes
         return rvals_son;
       }
 
-      double** HcurlProjBasedSelector::build_projection_matrix(double3* gip_points, int num_gip_points,
-        const int* shape_inx, const int num_shapes)
+      template<typename Scalar>
+      double** HcurlProjBasedSelector<Scalar>::build_projection_matrix(double3* gip_points, int num_gip_points,
+        const int* shape_inx, const int num_shapes, ElementMode2D mode)
       {
         //allocate
         double** matrix = new_matrix<double>(num_shapes, num_shapes);
@@ -225,12 +248,12 @@ namespace Hermes
             for(int j = 0; j < num_gip_points; j++)
             {
               double gip_x = gip_points[j][H2D_GIP2D_X], gip_y = gip_points[j][H2D_GIP2D_Y];
-              double value0[2] = { shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 0), shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 1) };
-              double value1[2] = { shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 0), shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 1) };
-              double d1dx0 = shapeset->get_value(H2D_FEI_DX, shape0_inx, gip_x, gip_y, 1);
-              double d1dx1 = shapeset->get_value(H2D_FEI_DX, shape1_inx, gip_x, gip_y, 1);
-              double d0dy0 = shapeset->get_value(H2D_FEI_DY, shape0_inx, gip_x, gip_y, 0);
-              double d0dy1 = shapeset->get_value(H2D_FEI_DY, shape1_inx, gip_x, gip_y, 0);
+              double value0[2] = { this->shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 0, mode), this->shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 1, mode) };
+              double value1[2] = { this->shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 0, mode), this->shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 1, mode) };
+              double d1dx0 = this->shapeset->get_value(H2D_FEI_DX, shape0_inx, gip_x, gip_y, 1, mode);
+              double d1dx1 = this->shapeset->get_value(H2D_FEI_DX, shape1_inx, gip_x, gip_y, 1, mode);
+              double d0dy0 = this->shapeset->get_value(H2D_FEI_DY, shape0_inx, gip_x, gip_y, 0, mode);
+              double d0dy1 = this->shapeset->get_value(H2D_FEI_DY, shape1_inx, gip_x, gip_y, 0, mode);
               double curl0 = d1dx0 - d0dy0;
               double curl1 = d1dx1 - d0dy1;
 
@@ -244,19 +267,20 @@ namespace Hermes
         return matrix;
       }
 
-      std::complex<double> HcurlProjBasedSelector::evaluate_rhs_subdomain(Element* sub_elem, const ElemGIP& sub_gip, const ElemSubTrf& sub_trf, const ElemSubShapeFunc& sub_shape)
+      template<typename Scalar>
+      Scalar HcurlProjBasedSelector<Scalar>::evaluate_rhs_subdomain(Element* sub_elem, const typename ProjBasedSelector<Scalar>::ElemGIP& sub_gip, const typename ProjBasedSelector<Scalar>::ElemSubTrf& sub_trf, const typename ProjBasedSelector<Scalar>::ElemSubShapeFunc& sub_shape)
       {
         double coef_curl = std::abs(sub_trf.coef_mx * sub_trf.coef_my);
-        std::complex<double> total_value = 0;
+        Scalar total_value = 0;
         for(int gip_inx = 0; gip_inx < sub_gip.num_gip_points; gip_inx++)
         {
           //get location and transform it
           double3 &gip_pt = sub_gip.gip_points[gip_inx];
 
           //get value of a shape function
-          std::complex<double> shape_value0 = sub_shape.svals[H2D_HCFE_VALUE0][gip_inx];
-          std::complex<double> shape_value1 = sub_shape.svals[H2D_HCFE_VALUE1][gip_inx];
-          std::complex<double> shape_curl = sub_shape.svals[H2D_HCFE_CURL][gip_inx];
+          Scalar shape_value0 = sub_shape.svals[H2D_HCFE_VALUE0][gip_inx];
+          Scalar shape_value1 = sub_shape.svals[H2D_HCFE_VALUE1][gip_inx];
+          Scalar shape_curl = sub_shape.svals[H2D_HCFE_CURL][gip_inx];
 
           ////DEBUG-BEGIN
           //double ref_x = gip_pt[H2D_GIP2D_X] * sub_trf.trf->m[0] + sub_trf.trf->t[0];
@@ -270,12 +294,12 @@ namespace Hermes
           ////DEBUG-END
 
           //get value of ref. solution
-          std::complex<double> ref_value0 = sub_trf.coef_mx * sub_gip.rvals[H2D_HCFE_VALUE0][gip_inx];
-          std::complex<double> ref_value1 = sub_trf.coef_my * sub_gip.rvals[H2D_HCFE_VALUE1][gip_inx];
-          std::complex<double> ref_curl = coef_curl * sub_gip.rvals[H2D_HCFE_CURL][gip_inx]; //coef_curl * curl
+          Scalar ref_value0 = sub_trf.coef_mx * sub_gip.rvals[H2D_HCFE_VALUE0][gip_inx];
+          Scalar ref_value1 = sub_trf.coef_my * sub_gip.rvals[H2D_HCFE_VALUE1][gip_inx];
+          Scalar ref_curl = coef_curl * sub_gip.rvals[H2D_HCFE_CURL][gip_inx]; //coef_curl * curl
 
           //evaluate a right-hand value
-          std::complex<double> value = (shape_value0 * ref_value0)
+          Scalar value = (shape_value0 * ref_value0)
             + (shape_value1 * ref_value1)
             + (shape_curl * ref_curl);
 
@@ -284,7 +308,8 @@ namespace Hermes
         return total_value;
       }
 
-      double HcurlProjBasedSelector::evaluate_error_squared_subdomain(Element* sub_elem, const ElemGIP& sub_gip, const ElemSubTrf& sub_trf, const ElemProj& elem_proj)
+      template<typename Scalar>
+      double HcurlProjBasedSelector<Scalar>::evaluate_error_squared_subdomain(Element* sub_elem, const typename ProjBasedSelector<Scalar>::ElemGIP& sub_gip, const typename ProjBasedSelector<Scalar>::ElemSubTrf& sub_trf, const typename ProjBasedSelector<Scalar>::ElemProj& elem_proj)
       {
         double total_error_squared = 0;
         double coef_curl = std::abs(sub_trf.coef_mx * sub_trf.coef_my);
@@ -294,7 +319,7 @@ namespace Hermes
           double3 &gip_pt = sub_gip.gip_points[gip_inx];
 
           //calculate value of projected solution
-          std::complex<double> proj_value0 = 0, proj_value1 = 0, proj_curl = 0;
+          Scalar proj_value0 = 0, proj_value1 = 0, proj_curl = 0;
           for(int i = 0; i < elem_proj.num_shapes; i++)
           {
             int shape_inx = elem_proj.shape_inxs[i];
@@ -320,9 +345,9 @@ namespace Hermes
             ////DEBUG-END
 
             //get value of ref. solution
-            std::complex<double> ref_value0 = sub_trf.coef_mx * sub_gip.rvals[H2D_HCFE_VALUE0][gip_inx];
-            std::complex<double> ref_value1 = sub_trf.coef_my * sub_gip.rvals[H2D_HCFE_VALUE1][gip_inx];
-            std::complex<double> ref_curl = coef_curl * sub_gip.rvals[H2D_HCFE_CURL][gip_inx]; //coef_curl * curl
+            Scalar ref_value0 = sub_trf.coef_mx * sub_gip.rvals[H2D_HCFE_VALUE0][gip_inx];
+            Scalar ref_value1 = sub_trf.coef_my * sub_gip.rvals[H2D_HCFE_VALUE1][gip_inx];
+            Scalar ref_curl = coef_curl * sub_gip.rvals[H2D_HCFE_CURL][gip_inx]; //coef_curl * curl
 
             //evaluate error
             double error_squared = sqr(proj_value0 - ref_value0)
@@ -334,6 +359,8 @@ namespace Hermes
         }
         return total_error_squared;
       }
+      template class HERMES_API HcurlProjBasedSelector<double>;
+      template class HERMES_API HcurlProjBasedSelector<std::complex<double> >;
     }
   }
 }

@@ -16,21 +16,24 @@
 #ifndef __H2D_REFMAP_H
 #define __H2D_REFMAP_H
 
-#include "../hermes2d_common_defs.h"
+#include "../global.h"
 #include "../shapeset/precalc.h"
 #include "../quadrature/quad_all.h"
+#include "shapeset/shapeset_h1_all.h"
 
 namespace Hermes
 {
   namespace Hermes2D
   {
     class Element;
+    class Mesh;
     namespace Views{
       class Orderizer;
       class Linearizer;
       class Vectorizer;
     };
 
+    /// @ingroup meshFunctions
     /// \brief Represents the reference mapping.
     ///
     /// RefMap represents the mapping from the reference to the physical element.
@@ -47,7 +50,7 @@ namespace Hermes
       ~RefMap();
 
       /// Sets the quadrature points in which the reference map will be evaluated.
-      /// \param quad_2d [in] The quadrature points.
+      /// \param quad_2d[in] The quadrature points.
       void set_quad_2d(Quad2D* quad_2d);
 
       /// Returns the current quadrature points.
@@ -59,55 +62,67 @@ namespace Hermes
       /// Initializes the reference map for the specified element.
       /// Must be called prior to using all other functions in the class.
       virtual void set_active_element(Element* e);
-      
-      /// Returns the triples [x, y, norm] of the tangent to the specified (possibly
+
+      /// Returns the triples[x, y, norm] of the tangent to the specified (possibly
       /// curved) edge at the 1D integration points along the edge. The maximum
       /// 1D quadrature rule is used by default, but the user may specify his own
       /// order. In this case, the edge pseudo-order is expected (as returned by
       /// Quad2D::get_edge_points).
       double3* get_tangent(int edge, int order = -1);
-      
+
       /// Transforms physical coordinates x, y from the element e back to the reference domain.
       /// If the point (x, y) does not lie in e, then (xi1, xi2) will not lie in the reference domain.
-      void untransform(Element* e, double x, double y, double& xi1, double& xi2);
-      
+      static void untransform(Element* e, double x, double y, double& xi1, double& xi2);
+
+      /// Returns the element pointer located at physical coordinates x, y.
+      /// \param[in] x Physical x-coordinate.
+      /// \param[in] y Physical y-coordinate.
+      /// \param[in] x_reference Optional parameter, in which the x-coordinate of x in the reference domain will be returned.
+      /// \param[in] y_reference Optional parameter, in which the y-coordinate of y in the reference domain will be returned.
+      static Element* element_on_physical_coordinates(const Mesh* mesh, double x, double y, double* x_reference = NULL, double* y_reference = NULL);
+
+      /// Find out if the coordinatex [x,y] lie in the element e.
+      static bool is_element_on_physical_coordinates(Element* e, double x, double y, double* x_reference, double* y_reference);
+
       /// Returns the x-coordinates of the integration points transformed to the
       /// physical domain of the element. Intended for integrals containing spatial
       /// variables.
       double* get_phys_x(int order);
 
-    private:
+      /// Returns he y-coordinates of the integration points transformed to the
+      /// physical domain of the element. Intended for integrals containing spatial
+      /// variables.
+      double* get_phys_y(int order);
+
       /// Returns true if the jacobian of the reference map is constant (which
       /// is the case for non-curvilinear triangular elements), false otherwise.
       bool is_jacobian_const() const;
-
-      /// Returns the increase in the integration order due to the reference map.
-      int get_inv_ref_order() const;
 
       /// If the jacobian of the reference map is constant, this is the fast
       /// way to obtain it.
       double get_const_jacobian() const;
 
-      /// If the reference map is constant, this is the fast way to obtain
-      /// its inverse matrix.
-      double2x2* get_const_inv_ref_map();
-
       /// Returns the jacobian of the reference map precalculated at the integration
       /// points of the specified order. Intended for non-constant jacobian elements.
       double* get_jacobian(int order);
 
-      /// Returns the inverse matrices of the reference map precalculated at the
+      /// Returns the increase in the integration order due to the reference map.
+      int get_inv_ref_order() const;
+
+			/// Returns the inverse matrices of the reference map precalculated at the
       /// integration points of the specified order. Intended for non-constant
       /// jacobian elements.
       double2x2* get_inv_ref_map(int order);
 
+      /// If the reference map is constant, this is the fast way to obtain
+      /// its inverse matrix.
+      double2x2* get_const_inv_ref_map();
+
+      H1ShapesetJacobi ref_map_shapeset;
+      PrecalcShapeset ref_map_pss;
+    private:
       /// Returns coefficients for weak forms with second derivatives.
       double3x2* get_second_ref_map(int order);
-
-      /// Returns he y-coordinates of the integration points transformed to the
-      /// physical domain of the element. Intended for integrals containing spatial
-      /// variables.
-      double* get_phys_y(int order);
 
       /// Calculates the inverse Jacobi matrix of reference map at a particular point (xi1, xi2).
       void inv_ref_map_at_point(double xi1, double xi2, double& x, double& y, double2x2& m);
@@ -131,7 +146,7 @@ namespace Hermes
         stack[top] = *ctm;
         this->ctm = stack + top;
         update_cur_node();
-        if (is_const) calc_const_inv_ref_map();
+        if(is_const) calc_const_inv_ref_map();
       }
 
       Quad2D* quad_2d;
@@ -157,7 +172,7 @@ namespace Hermes
         double3x2* second_ref_map[H2D_MAX_TABLES];
         double* phys_x[H2D_MAX_TABLES];
         double* phys_y[H2D_MAX_TABLES];
-        double3* tan[4];
+        double3* tan[H2D_MAX_NUMBER_EDGES];
       };
 
       /// Table of RefMap::Nodes, indexed by a sub-element mapping.
@@ -171,7 +186,7 @@ namespace Hermes
       {
         Node* updated_node = new Node;
 
-        if (sub_idx > H2D_MAX_IDX) {
+        if(sub_idx > H2D_MAX_IDX) {
           delete updated_node;
           cur_node = handle_overflow();
         }
@@ -194,7 +209,7 @@ namespace Hermes
 
       void calc_second_ref_map(int order);
 
-      bool is_parallelogram();
+      static bool is_parallelogram(Element* e);
 
       void calc_phys_x(int order);
 
@@ -220,9 +235,10 @@ namespace Hermes
 
       double2* coeffs;
 
-      double2  lin_coeffs[4];
+      double2  lin_coeffs[H2D_MAX_NUMBER_EDGES];
       template<typename T> friend class MeshFunction;
       template<typename T> friend class DiscreteProblem;
+      template<typename T> friend class DiscreteProblemLinear;
       template<typename T> friend class Solution;
       template<typename T> friend class ExactSolution;
       template<typename T> friend class ExactSolutionScalar;
@@ -239,7 +255,8 @@ namespace Hermes
       friend Geom<double>* init_geom_vol(RefMap *rm, const int order);
       friend Geom<double>* init_geom_surf(RefMap *rm, SurfPos* surf_pos, const int order);
       friend Func<double>* init_fn(PrecalcShapeset *fu, RefMap *rm, const int order);
-    };
+      template<typename T> friend T int_g_h(Function<T>* fg, Function<T>* fh, RefMap* rg, RefMap* rh);
+	};
   }
 }
 #endif

@@ -22,12 +22,14 @@ namespace Hermes
 {
   namespace Hermes2D
   {
-    /// @defgroup mesh_readers Mesh readers
-
+    /** @defgroup mesh_readers Mesh readers
+     * \brief Collection of classes with the purpose of saving and loading Mesh class instances.
+     */
+    
     /// Abstract class for mesh readers
     ///
     /// @ingroup mesh_readers
-    class HERMES_API MeshReader
+    class HERMES_API MeshReader : public Hermes::Mixins::Loggable
     {
     public:
       virtual ~MeshReader() { }

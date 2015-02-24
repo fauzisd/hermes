@@ -19,62 +19,66 @@
 #include "space.h"
 namespace Hermes
 {
-  namespace Hermes2D
-  {
-    /// L2Space represents a space of Scalar functions with discontinuities along
-    /// mesh edges.
-    ///
-    ///
-    template<typename Scalar>
-    class HERMES_API L2Space : public Space<Scalar>
-    {
-    public:
-      L2Space(Mesh* mesh, int p_init = 0,
-        Shapeset* shapeset = NULL);
+	namespace Hermes2D
+	{
+		/// @ingroup spaces
+		/// L2Space represents a space of Scalar functions with discontinuities along
+		/// mesh edges.<br>
+    /// Typical usage:<br>
+    /// ...<br>
+    /// <br>
+    /// // Initialize space.<br>
+    /// int globalPolynomialOrder = 4;<br>
+    /// Hermes::Hermes2D::L2Space<double> space(&mesh, &bcs, globalPolynomialOrder);<br>
+		template<typename Scalar>
+		class HERMES_API L2Space : public Space<Scalar>
+		{
+		public:
+			L2Space();
+			L2Space(const Mesh* mesh, int p_init = 0,
+				Shapeset* shapeset = NULL);
 
-      virtual ~L2Space();
+			virtual ~L2Space();
 
-      virtual Space<Scalar>* dup(Mesh* mesh, int order_increase = 0) const;
+			virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order, EssentialBoundaryCondition<Scalar> *bc);
 
-      /// Loads this space from a file.
-      void load(const char *filename, Mesh* mesh, Shapeset* shapeset = NULL);
-      
-      virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order);
-      
-      virtual void get_element_assembly_list(Element* e, AsmList<Scalar>* al);
+			virtual void get_element_assembly_list(Element* e, AsmList<Scalar>* al, unsigned int first_dof = 0) const;
 
-    protected:
-      virtual int get_edge_order(Element* e, int edge) {
-        // There are no continuity constraints on shape functions in L2.
-        return Global<Scalar>::make_edge_order( e->get_mode(), edge, this->edata[e->id].order );
-      }
+			/// Copy from Space instance 'space'
+			virtual void copy(const Space<Scalar>* space, Mesh* new_mesh);
+		protected:
+			virtual int get_edge_order(Element* e, int edge) const {
+				return H2D_MAKE_EDGE_ORDER(e->get_mode(), edge, this->edata[e->id].order);
+			}
 
-      virtual void set_shapeset(Shapeset* shapeset);
+			virtual void set_shapeset(Shapeset* shapeset);
 
-      virtual SpaceType get_type() const { return HERMES_L2_SPACE; }
+			virtual SpaceType get_type() const { return HERMES_L2_SPACE; }
 
-      /// Common code for the constructors.
-      void init(Shapeset* shapeset, Ord2 p_init);
-      
-      struct L2Data
-      {
-        int vdof[4];
-        int edof[4];
-      };
+			/// Common code for the constructors.
+			void init(Shapeset* shapeset, int p_init);
 
-      L2Data* ldata;
-      int lsize;
+			struct L2Data
+			{
+				int vdof[H2D_MAX_NUMBER_VERTICES];
+				int edof[H2D_MAX_NUMBER_EDGES];
+			};
 
-      virtual void resize_tables();
+			L2Data* ldata;
+			int lsize;
 
-      virtual void assign_vertex_dofs() {}
-      virtual void assign_edge_dofs() {}
-      virtual void assign_bubble_dofs();
+			virtual void resize_tables();
 
-      virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al);
-      virtual void get_boundary_assembly_list_internal(Element* e, int surf_num, AsmList<Scalar>* al);
-      virtual void get_bubble_assembly_list(Element* e, AsmList<Scalar>* al);
-    };
-  }
+			virtual void assign_vertex_dofs() {}
+			virtual void assign_edge_dofs() {}
+			virtual void assign_bubble_dofs();
+
+			virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al) const;
+			virtual void get_boundary_assembly_list_internal(Element* e, int surf_num, AsmList<Scalar>* al) const;
+			virtual void get_bubble_assembly_list(Element* e, AsmList<Scalar>* al) const;
+			template<typename T> friend class Space<T>::ReferenceSpaceCreator;
+			friend class Space<Scalar>;
+		};
+	}
 }
 #endif

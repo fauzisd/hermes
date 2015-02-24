@@ -1,3 +1,10 @@
+#ifndef __HERMES_CONFIG_H_
+#define __HERMES_CONFIG_H_
+
+// OpenMP
+#cmakedefine NUM_THREADS ${NUM_THREADS}
+#cmakedefine WITH_OPENMP
+
 #cmakedefine HAVE_FMEMOPEN
 #cmakedefine HAVE_LOG2
 #cmakedefine EXTREME_QUAD
@@ -11,11 +18,8 @@
 #cmakedefine WITH_MPI
 
 // stacktrace
-#cmakedefine HAVE_TEUCHOS_LINK
-#cmakedefine HAVE_TEUCHOS_BFD
-#cmakedefine HAVE_EXECINFO
-#cmakedefine HAVE_VASPRINTF
-#cmakedefine HAVE_CXXABI
+#cmakedefine WITH_STACKTRACE
+#cmakedefine EXECINFO_FOUND
 
 // trilinos
 #cmakedefine WITH_TRILINOS
@@ -28,14 +32,10 @@
 #cmakedefine HAVE_NOX
 #cmakedefine HAVE_KOMPLEX
 
-#cmakedefine TRACING
-#cmakedefine DEBUG
-#cmakedefine DEBUG_ORDER
-
-// elements
-#cmakedefine WITH_TETRA
-#cmakedefine WITH_HEX
-#cmakedefine WITH_PRISM
-
 // no logo
 #cmakedefine HERMES_NO_LOGO
+
+// GLUT
+#cmakedefine NOGLUT
+
+#endif

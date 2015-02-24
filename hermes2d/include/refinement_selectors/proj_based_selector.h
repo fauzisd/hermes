@@ -16,7 +16,7 @@
 #ifndef __H2D_REFINEMENT_PROJ_BASED_SELECTOR_H
 #define __H2D_REFINEMENT_PROJ_BASED_SELECTOR_H
 
-#include "../hermes2d_common_defs.h"
+#include "../global.h"
 #include "optimum_selector.h"
 
 using namespace Hermes::Algebra::DenseMatrixOperations;
@@ -38,8 +38,8 @@ namespace Hermes
       *  \section s_override Expanding
       *  In order to implement a support for a new space or a new approach to calculation of squared error,
       *  implement following methods:
-      *  - precalc_shapes() [optional]
-      *  - precalc_ortho_shapes() [optional]
+      *  - precalc_shapes()[optional]
+      *  - precalc_ortho_shapes()[optional]
       *  - precalc_ref_solution()
       *  - build_projection_matrix()
       *  - evaluate_rhs_subdomain()
@@ -47,6 +47,9 @@ namespace Hermes
       */
       template<typename Scalar>
       class HERMES_API ProjBasedSelector : public OptimumSelector<Scalar> {
+      protected:
+        class TrfShapeExp;
+
       public: //API
         /// Destructor
         virtual ~ProjBasedSelector();
@@ -63,6 +66,13 @@ namespace Hermes
         double get_error_weight_h() const;
         double get_error_weight_p() const;
         double get_error_weight_aniso() const;
+
+        /// Evaluated shapes for all possible transformations for all points. The first index is a transformation, the second index is an index of a shape function.
+        typedef Hermes::vector<TrfShapeExp> TrfShape[H2D_TRF_NUM];
+
+        bool* cached_shape_vals_valid; ///< True if shape values were already initialized.
+        TrfShape* cached_shape_ortho_vals; ///< Precalculated valus of orthogonalized shape functions.
+        TrfShape* cached_shape_vals; ///< Precalculate values of shape functions.
 
       protected: //evaluated shape basis
         /// A transform shaped function expansions.
@@ -82,19 +92,20 @@ namespace Hermes
 
           /// Desructor.
           virtual ~TrfShapeExp();
-          
+
           /// Assignment operator. Prevent unauthorized copying of the pointer.
           const TrfShapeExp& operator = (const TrfShapeExp& other)
           {
-            delete[] values; values = NULL;
-            error_if(other.values != NULL, "Unable to assign a non-empty values. Use references instead.");
+            delete [] values; values = NULL;
+            if(other.values == NULL)
+              throw Exceptions::Exception("Unable to assign a non-empty values. Use references instead.");
             return *this;
           }
         private:
           int num_gip; ///< A number of integration points.
           int num_expansion; ///< A number of expansions.
           double** values; ///< Values. The first index is index of a functions expansion, the second index is an index of a an integration point.
-          
+
           /// Allocates a space for function expansions.
           /** \param[in] num_expansion A number of expansions.
           *  \param[in] num_gip A number of itegration points. */
@@ -112,16 +123,9 @@ namespace Hermes
           template<typename T> friend class ProjBasedSelector;
           template<typename T> friend class L2ProjBasedSelector;
           template<typename T> friend class H1ProjBasedSelector;
-          friend class HcurlProjBasedSelector;
+          template<typename T> friend class HcurlProjBasedSelector;
           template<typename T> friend class Adapt;
         };
-
-        /// Evaluated shapes for all possible transformations for all points. The first index is a transformation, the second index is an index of a shape function.
-        typedef Hermes::vector<TrfShapeExp> TrfShape[H2D_TRF_NUM];
-
-        bool cached_shape_vals_valid[H2D_NUM_MODES]; ///< True if shape values were already initialized.
-        TrfShape cached_shape_ortho_vals[H2D_NUM_MODES]; ///< Precalculated valus of orthogonalized shape functions.
-        TrfShape cached_shape_vals[H2D_NUM_MODES]; ///< Precalculate values of shape functions.
 
         /// Calculates values of shape function at GIP for all transformations.
         /** Override this method to supply a pre-calculated vales of shape function expansions
@@ -138,7 +142,7 @@ namespace Hermes
         *             used transformation including the identity to the a size defined by \a max_shape_inx. The system will assume that shape functions
         *             are precalculated if the array corresponding to the identity function is not empty.
         */
-        virtual void precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, TrfShape& svals) {};
+        virtual void precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, TrfShape& svals, ElementMode2D mode) {};
 
         /// Calculates values of orthogonalized shape function at GIP for all transformations.
         /** Override this method to supply a pre-calculated vales of orthonormalized shape function expansions
@@ -158,7 +162,7 @@ namespace Hermes
         *             used transformation including the identity to the a size defined by \a max_shape_inx. The system will assume that shape functions
         *             are precalculated if the array corresponding to the identity function is not empty.
         */
-        virtual void precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, TrfShape& ortho_svals) {};
+        virtual void precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, TrfShape& ortho_svals, ElementMode2D mode) {};
 
       protected:
         /// Constructor.
@@ -207,7 +211,7 @@ namespace Hermes
           /** By default, the item is set as invalid.
           *  \param value A starting value.
           *  \param state A state of the value. */
-          ValueCacheItem(const T& value = 0, const int state = H2DRS_VALCACHE_INVALID) : value(value), state(state) {}; ///< Default constructor. By default, it creates a item that contains invalid value.
+          ValueCacheItem(const T& value = 0, const int state = H2DRS_VALCACHE_INVALID) : value(value), state(state) {}; ///< Default constructor. By default, it creates an item that contains invalid value.
         private:
           T value; ///< A value stored in the item.
           int state; ///< A state of the image: ::H2DRS_VALCACHE_INVALID or ::H2DRS_VALCACHE_VALID or any other user-defined value. The first user defined state has to have number ::H2DRS_VALCACHE_USER.
@@ -255,7 +259,7 @@ namespace Hermes
         *  \param[out] herr An error of elements of H-candidates of various permutation of orders.
         *  \param[out] perr An error of elements of P-candidates of various permutation of orders.
         *  \param[out] anisoerr An error of elements of ANISO-candidates of various permutation of orders. */
-        virtual void calc_projection_errors(Element* e, const typename OptimumSelector<Scalar>::CandsInfo& info_h, const typename OptimumSelector<Scalar>::CandsInfo& info_p, const typename OptimumSelector<Scalar>::CandsInfo& info_aniso, Solution<Scalar>* rsln, CandElemProjError herr[4], CandElemProjError perr, CandElemProjError anisoerr[4]);
+        virtual void calc_projection_errors(Element* e, const typename OptimumSelector<Scalar>::CandsInfo& info_h, const typename OptimumSelector<Scalar>::CandsInfo& info_p, const typename OptimumSelector<Scalar>::CandsInfo& info_aniso, Solution<Scalar>* rsln, CandElemProjError herr[H2D_MAX_ELEMENT_SONS], CandElemProjError perr, CandElemProjError anisoerr[H2D_MAX_ELEMENT_SONS]);
 
         /// Calculate projection errors of an element of an candidate considering multiple orders.
         /** An element of a candidate may span over multiple sub-domains. All integration uses the reference domain.
@@ -272,7 +276,7 @@ namespace Hermes
         *  \param[in] sub_ortho_svals
         *  \param[in] info Information about candidates: range of orders, etc.
         *  \param[out] errors_squared Calculated squared errors for all orders specified through \a info. */
-        void calc_error_cand_element(const int mode, double3* gip_points, int num_gip_points, const int num_sub, Element** sub_domains, Trf** sub_trfs, Scalar*** sub_rvals, Hermes::vector<TrfShapeExp>** sub_nonortho_svals, Hermes::vector<TrfShapeExp>** sub_ortho_svals, const typename OptimumSelector<Scalar>::CandsInfo& info, CandElemProjError errors_squared);
+        void calc_error_cand_element(const ElementMode2D mode, double3* gip_points, int num_gip_points, const int num_sub, Element** sub_domains, Trf** sub_trfs, Scalar*** sub_rvals, Hermes::vector<TrfShapeExp>** sub_nonortho_svals, Hermes::vector<TrfShapeExp>** sub_ortho_svals, const typename OptimumSelector<Scalar>::CandsInfo& info, CandElemProjError errors_squared);
 
       protected: //projection
         /// Projection of an element of a candidate.
@@ -313,7 +317,7 @@ namespace Hermes
         *  it is suggested to provide pointers to attributes of the class rather than to dynamically allocate
         *  an array.
         *  The method can assume that the an element is refined into ::H2D_MAX_ELEMENT_SONS elements (sons) in the reference mesh.
-        *  \param[in] inx_son An index of a son of an element, i.e., an index of a subdomain. The index is in a range [0, H2D_MAX_ELEMENT_SONS - 1].
+        *  \param[in] inx_son An index of a son of an element, i.e., an index of a subdomain. The index is in a range[0, H2D_MAX_ELEMENT_SONS - 1].
         *  \param[in] rsln A reference solution.
         *  \param[in] element An element of the coarse solution. An element of both the same geometry and the same ID have to be present in the mesh of the reference solution.
         *  \param[in] intr_gip_order An order of quadrature integration. The number of quadrature points should be retrieved through a quadrature stored in the paremeter \a rsln.
@@ -327,7 +331,7 @@ namespace Hermes
         *  \param[in] shape_inx An array of shape indices.
         *  \param[in] num_shapes A number of shape indices in the array.
         *  \return A projection matrix. The matrix has to be allocated trought new_matrix(). The size of the matrix has to be \a num_shapes x \a num_shapes. */
-        virtual double** build_projection_matrix(double3* gip_points, int num_gip_points, const int* shape_inx, const int num_shapes) = 0;
+        virtual double** build_projection_matrix(double3* gip_points, int num_gip_points, const int* shape_inx, const int num_shapes, ElementMode2D) = 0;
 
         /// Evaluates a value of the right-hande side in a subdomain.
         /** Override to calculate a value of the right-hand side.

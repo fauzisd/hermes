@@ -27,10 +27,10 @@
 #include <typeinfo>
 #include <sstream>
 #include <stdio.h>
+#include "exceptions.h"
 
 namespace Hermes
 {
-
   /// A vector of values.
   /** This class is used to pass a variable number of parameters in a type-safe fashion.
   *  \par Suggested Use
@@ -82,36 +82,36 @@ namespace Hermes
     // Look up an integer number in an array.
     int find_index_slow(const T& x) {
       for (int i=0; i < this->size(); i++) {
-        if ((*this)[i] == x)
+        if((*this)[i] == x)
           return i;
       }
-      throw std::runtime_error("Index not found");
+      throw Hermes::Exceptions::Exception("Index not found");
     }
 
     // Returns maximum of the vector<T> in case of T == int.
     int max() {
-      if (this->size() == 0)
-        throw std::runtime_error("Empty vector");
+      if(this->size() == 0)
+        throw Hermes::Exceptions::Exception("Empty vector");
       int m;
       if(typeid((*this)[0]) != typeid(m))
-        throw std::runtime_error("vector<T>::max() called and T != int.");
+        throw Hermes::Exceptions::Exception("vector<T>::max() called and T != int.");
       m = (int)(*this)[0];
       for (unsigned int i=1; i < this->size(); i++)
-        if ((int)(*this)[i] > m)
+        if((int)(*this)[i] > m)
           m = (int)(*this)[i];
       return m;
     }
 
     // Returns minimum of the vector<T> in case of T == int.
     int min() {
-      if (this->size() == 0)
-        throw std::runtime_error("Empty vector");
+      if(this->size() == 0)
+        throw Hermes::Exceptions::Exception("Empty vector");
       int m;
       if(typeid((*this)[0]) != typeid(m))
-        throw std::runtime_error("vector<T>::max() called and T != int.");
+        throw Hermes::Exceptions::Exception("vector<T>::max() called and T != int.");
       m = (int)(*this)[0];
       for (unsigned int i=1; i < this->size(); i++)
-        if ((int)(*this)[i] < m)
+        if((int)(*this)[i] < m)
           m = (int)(*this)[i];
       return m;
     }
@@ -119,33 +119,30 @@ namespace Hermes
     // Look up an integer number in an array.
     // This prepares a permut array, so subsequent calls are very fast
     int find_index(int x, bool throw_exception=true) {
-      if (this->size() == 0) {
-        if (throw_exception) {
-          throw std::runtime_error("Empty vector");
+      if(this->size() == 0) {
+        if(throw_exception) {
+          throw Hermes::Exceptions::Exception("Empty vector");
         }
         else return -1;
       }
       int idx;
       if(typeid((*this)[0]) != typeid(idx))
-        throw std::runtime_error("vector<T>::find_index() called and T != int.");
+        throw Hermes::Exceptions::Exception("vector<T>::find_index() called and T != int.");
 
-      if (this->_permut.size() == 0) {
+      if(this->_permut.size() == 0) {
         // Initialize the permut array
         this->_min = this->min();
         this->_max = this->max();
         for (int i=0; i < (int)this->_max+1; i++) this->_permut.push_back(-1);
         for (unsigned int i=0; i < this->size(); i++) this->_permut[(int)(*this)[i]] = i;
       }
-      if (((int)this->_min <= x) && (x <= (int)this->_max))
+      if(((int)this->_min <= x) && (x <= (int)this->_max))
         idx = this->_permut[x];
       else
         idx = -1;
-      if (idx == -1) {
-        if (throw_exception) {
-          std::ostringstream s;
-          s << "Index '" << x << "' not found";
-          throw std::runtime_error(s.str());
-        }
+      if(idx == -1) {
+        if(throw_exception)
+          throw Hermes::Exceptions::Exception("Index in the vector not found");
         else
           return -1;
       }
@@ -162,7 +159,6 @@ namespace Hermes
     std::vector<int> _permut;
     int _min, _max;
   };
-
 } // namespace Hermes
 
 #endif

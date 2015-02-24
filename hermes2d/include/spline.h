@@ -16,7 +16,7 @@
 #ifndef __H2D_SPLINE_H
 #define __H2D_SPLINE_H
 
-#include "hermes2d_common_defs.h"
+#include "global.h"
 
 namespace Hermes
 {
@@ -34,15 +34,10 @@ namespace Hermes
       CubicSpline(double const_value);
 
       /// Destructor.
-      ~CubicSpline() {
-        if (coeffs != NULL)
-          delete [] coeffs;
-        points.clear();
-        values.clear();
-      };
+      ~CubicSpline();
 
       /// Calculates coefficients.
-      bool calculate_coeffs();
+      void calculate_coeffs();
 
       /// One-dimensional function value.
       double value(double x) const;
@@ -97,7 +92,7 @@ namespace Hermes
       double point_right, value_right, derivative_right;
 
       /// A set of four coefficients a, b, c, d for an elementary cubic spline.
-      SplineCoeff* coeffs;
+      Hermes::vector<SplineCoeff> coeffs;
 
       /// Gets derivative at a point that lies in interval 'm'.
       double get_derivative_from_interval(double x_in, int m) const;

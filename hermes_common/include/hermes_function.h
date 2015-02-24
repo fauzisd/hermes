@@ -18,12 +18,28 @@
 
 #include "compat.h"
 #include "ord.h"
+#include "exceptions.h"
+#include "mixins.h"
 
 namespace Hermes
 {
+  struct HERMES_API SplineCoeff
+  {
+    double a, b, c, d;    // four coefficients of a cubic spline.
+  };
+
   /// Generic class for functions of one variable.
+  /// Typical usage: user creates a descendant:
+  /// class MyRealSinSquared : public Hermes1DFunction<double>
+  /// {
+  ///&nbsp;/// Constructor.
+  ///&nbsp;MyRealSinSquared() : Hermes1DFunction<double>() {}
+  ///&nbsp;double value(double x) const { return std::sin(x) * std::sin(x); }
+  ///&nbsp;Ord ord(Hermes::Ord x) const { return std::sin(x) * std::sin(x); // Hermes::Ord arithmetics will take care of everything, the resulting order will be as high as possible, see other examples in this file for another possibility how to go about it. }
+  ///&nbsp;....
+  /// }
   template<typename Scalar>
-  class HERMES_API Hermes1DFunction
+  class HERMES_API Hermes1DFunction : public Hermes::Mixins::Loggable
   {
   public:
     /// Constructor.
@@ -56,8 +72,17 @@ namespace Hermes
   };
 
   /// Generic class for functions of two variables.
+  /// Typical usage: user creates a descendant:
+  /// class MyComplexASquaredMinusBSquared : public Hermes2DFunction<std::complex<double> >
+  /// {
+  ///&nbsp;/// Constructor.
+  ///&nbsp;MyComplexASquaredMinusBSquared() : Hermes2DFunction<std::complex<double> >() {}
+  ///&nbsp;std::complex<double> value(std::complex<double> x, std::complex<double> y) const { return x.real * y.real() - x.imag() * y.imag(); }
+  ///&nbsp;Hermes::Ord value(Hermes::Ord x, Hermes::Ord y) const { return Hermes::Ord(10); // Just say that this particular function is of polynomial order 10. }
+  ///&nbsp;....
+  /// }
   template<typename Scalar>
-  class HERMES_API Hermes2DFunction
+  class HERMES_API Hermes2DFunction : public Hermes::Mixins::Loggable
   {
   public:
     /// Constructor.
@@ -73,10 +98,12 @@ namespace Hermes
     virtual Hermes::Ord value(Hermes::Ord x, Hermes::Ord y) const;
 
     /// Two-dimensional function derivative value.
-    virtual Scalar derivative(Scalar x, Scalar y) const;
+    virtual Scalar derivative_x(Scalar x, Scalar y) const;
+    virtual Scalar derivative_y(Scalar x, Scalar y) const;
 
     /// Two-dimensional function derivative integration order.
-    virtual Hermes::Ord derivative(Hermes::Ord x, Hermes::Ord y) const;
+    virtual Hermes::Ord derivative_x(Hermes::Ord x, Hermes::Ord y) const;
+    virtual Hermes::Ord derivative_y(Hermes::Ord x, Hermes::Ord y) const;
 
     /// The function is constant.
     /// Returns the value of is_const.
@@ -89,9 +116,17 @@ namespace Hermes
     Scalar const_value;
   };
 
-  /// Generic class for functions of two variables.
+  /// Generic class for functions of three variables.
+  /// Typical usage: user creates a descendant:
+  /// class MyReal3DSum : public Hermes3DFunction<double>
+  /// {
+  ///&nbsp;/// Constructor.
+  ///&nbsp;MyReal3DSum() : Hermes3DFunction<double>() {}
+  ///&nbsp;virtual double value(double x, double y, double z) const { return x + y + z; }
+  ///&nbsp;....
+  /// }
   template<typename Scalar>
-  class HERMES_API Hermes3DFunction
+  class HERMES_API Hermes3DFunction : public Hermes::Mixins::Loggable
   {
   public:
     /// Constructor.
@@ -107,10 +142,14 @@ namespace Hermes
     virtual Hermes::Ord value(Hermes::Ord x, Hermes::Ord y, Hermes::Ord z) const;
 
     /// Two-dimensional function derivative value.
-    virtual Scalar derivative(Scalar x, Scalar y, Scalar z) const;
+    virtual Scalar derivative_x(Scalar x, Scalar y, Scalar z) const;
+    virtual Scalar derivative_y(Scalar x, Scalar y, Scalar z) const;
+    virtual Scalar derivative_z(Scalar x, Scalar y, Scalar z) const;
 
     /// Two-dimensional function derivative integration order.
-    virtual Hermes::Ord derivative(Hermes::Ord x, Hermes::Ord y, Hermes::Ord z) const;
+    virtual Hermes::Ord derivative_x(Hermes::Ord x, Hermes::Ord y, Hermes::Ord z) const;
+    virtual Hermes::Ord derivative_y(Hermes::Ord x, Hermes::Ord y, Hermes::Ord z) const;
+    virtual Hermes::Ord derivative_z(Hermes::Ord x, Hermes::Ord y, Hermes::Ord z) const;
 
     /// The function is constant.
     /// Returns the value of is_const.

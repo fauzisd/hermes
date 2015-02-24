@@ -23,9 +23,8 @@
 #define __HERMES_COMMON_UMFPACK_SOLVER_H_
 #include "config.h"
 #ifdef WITH_UMFPACK
-#include "linear_solver.h"
+#include "linear_matrix_solver.h"
 #include "matrix.h"
-#include "exceptions.h"
 
 using namespace Hermes::Algebra;
 
@@ -33,7 +32,7 @@ namespace Hermes
 {
   namespace Solvers
   {
-    template <typename Scalar> class HERMES_API UMFPackLinearSolver;
+    template <typename Scalar> class HERMES_API UMFPackLinearMatrixSolver;
     template <typename Scalar> class HERMES_API UMFPackIterator;
   }
 
@@ -54,7 +53,8 @@ namespace Hermes
       /// @param[in] ai row indices
       /// @param[in] ax values
       void create(unsigned int size, unsigned int nnz, int* ap, int* ai, Scalar* ax);
-    protected:
+
+      /// \brief Default constructor.
       CSCMatrix();
       /// \brief Constructor with specific size
       /// Calls alloc.
@@ -81,7 +81,7 @@ namespace Hermes
       /// @param[in] mat added matrix
       virtual void add_as_block(unsigned int i, unsigned int j, CSCMatrix<Scalar>* mat);
       virtual void add(unsigned int m, unsigned int n, Scalar **mat, int *rows, int *cols);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
       virtual unsigned int get_matrix_size() const;
       virtual unsigned int get_nnz() const;
       virtual double get_fill_in() const;
@@ -90,7 +90,7 @@ namespace Hermes
       void multiply_with_vector(Scalar* vector_in, Scalar* vector_out);
       // Multiplies matrix with a Scalar.
       void multiply_with_Scalar(Scalar value);
-      
+
       // Duplicates a matrix (including allocation).
       CSCMatrix* duplicate();
       // Exposes pointers to the CSC arrays.
@@ -113,23 +113,23 @@ namespace Hermes
       int *Ap;
       /// Number of non-zero entries ( =  Ap[size]).
       unsigned int nnz;
-      template <typename T> friend class Hermes::Solvers::UMFPackLinearSolver;
+      template <typename T> friend class Hermes::Solvers::UMFPackLinearMatrixSolver;
       template <typename T> friend class Hermes::Solvers::UMFPackIterator;
-      template<typename T> friend SparseMatrix<T>*  create_matrix(Hermes::MatrixSolverType matrix_solver_type);
+      template<typename T> friend SparseMatrix<T>*  create_matrix();
     };
 
     /// \brief This class is to be used with UMFPack solver only.
     template <typename Scalar>
-    class HERMES_API UMFPackMatrix : public CSCMatrix<Scalar> 
+    class HERMES_API UMFPackMatrix : public CSCMatrix<Scalar>
     {
-      template <typename T> friend class Hermes::Solvers::UMFPackLinearSolver;
+      template <typename T> friend class Hermes::Solvers::UMFPackLinearMatrixSolver;
       template <typename T> friend class Hermes::Solvers::UMFPackIterator;
-      template<typename T> friend SparseMatrix<T>*  create_matrix(Hermes::MatrixSolverType matrix_solver_type);
+      template<typename T> friend SparseMatrix<T>*  create_matrix();
     };
 
     /// \brief Class representing the vector for UMFPACK.
     template <typename Scalar>
-    class HERMES_API UMFPackVector : public Vector<Scalar> 
+    class HERMES_API UMFPackVector : public Vector<Scalar>
     {
     public:
       UMFPackVector();
@@ -137,7 +137,6 @@ namespace Hermes
       /// @param[in] size size of vector
       UMFPackVector(unsigned int size);
       virtual ~UMFPackVector();
-    protected:
       virtual void alloc(unsigned int ndofs);
       virtual void free();
       virtual Scalar get(unsigned int idx);
@@ -149,7 +148,7 @@ namespace Hermes
       virtual void add(unsigned int n, unsigned int *idx, Scalar *y);
       virtual void add_vector(Vector<Scalar>* vec);
       virtual void add_vector(Scalar* vec);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
 
       /// @return pointer to array with vector data
       /// \sa #v
@@ -158,9 +157,9 @@ namespace Hermes
     protected:
       /// UMFPack specific data structures for storing the rhs.
       Scalar *v;
-      template <typename T> friend class Hermes::Solvers::UMFPackLinearSolver;
+      template <typename T> friend class Hermes::Solvers::UMFPackLinearMatrixSolver;
       template <typename T> friend class Hermes::Solvers::UMFPackIterator;
-      template<typename T> friend Vector<T>* Hermes::Algebra::create_vector(Hermes::MatrixSolverType matrix_solver_type);
+      template<typename T> friend Vector<T>* Hermes::Algebra::create_vector();
     };
   }
   namespace Solvers
@@ -169,16 +168,17 @@ namespace Hermes
     ///
     /// @ingroup Solvers
     template <typename Scalar>
-    class HERMES_API UMFPackLinearSolver : public DirectSolver<Scalar> 
+    class HERMES_API UMFPackLinearMatrixSolver : public DirectSolver<Scalar>
     {
     public:
       /// Constructor of UMFPack solver.
       /// @param[in] m pointer to matrix
       /// @param[in] rhs pointer to right hand side vector
-      UMFPackLinearSolver(UMFPackMatrix<Scalar> *m, UMFPackVector<Scalar> *rhs);
-      virtual ~UMFPackLinearSolver();
+      UMFPackLinearMatrixSolver(UMFPackMatrix<Scalar> *m, UMFPackVector<Scalar> *rhs);
+      virtual ~UMFPackLinearMatrixSolver();
       virtual bool solve();
-    protected:
+      virtual int get_matrix_size();
+
       /// Matrix to solve.
       UMFPackMatrix<Scalar> *m;
       /// Right hand side vector.
@@ -196,7 +196,8 @@ namespace Hermes
       template <typename T> friend class Hermes::Algebra::CSCMatrix;
       template <typename T> friend class Hermes::Algebra::UMFPackMatrix;
       template <typename T> friend class Hermes::Algebra::UMFPackVector;
-      template<typename T> friend LinearSolver<T>* create_linear_solver(Hermes::MatrixSolverType matrix_solver_type, Matrix<T>* matrix, Vector<T>* rhs);
+      template<typename T> friend LinearMatrixSolver<T>* create_linear_solver(Matrix<T>* matrix, Vector<T>* rhs);
+      void check_status(const char *fn_name, int status);
     };
 
     /// \brief UMFPack matrix iterator. \todo document members
@@ -210,7 +211,6 @@ namespace Hermes
       bool move_to_position(int i, int j);
       bool move_ptr();
       void add_to_current_position(Scalar val);
-
     protected:
       int size;
       int nnz;

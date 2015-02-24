@@ -1,9 +1,9 @@
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "refinement_type.h"
 
 HERMES_API bool is_refin_aniso(const int refin_type)
 {
-  if (refin_type == H2D_REFINEMENT_ANISO_H || refin_type == H2D_REFINEMENT_ANISO_V)
+  if(refin_type == H2D_REFINEMENT_ANISO_H || refin_type == H2D_REFINEMENT_ANISO_V)
     return true;
   else
     return false;
@@ -17,7 +17,7 @@ HERMES_API int get_refin_sons(const int refin_type)
   case H2D_REFINEMENT_H: return 4; break;
   case H2D_REFINEMENT_ANISO_H:
   case H2D_REFINEMENT_ANISO_V: return 2; break;
-  default: error("Invalid refinement type %d", (int)refin_type); return -1;
+  default: throw Hermes::Exceptions::Exception("Invalid refinement type %d", (int)refin_type); return -1;
   }
 }
 

@@ -1,5 +1,5 @@
 Mac OS
-======
+------
 
 Download and compilation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -7,9 +7,6 @@ Download and compilation
 **Known issues**: Hermes has built-in OpenGL visualization based on FreeGlut, but this package 
 comes with certain installation difficulties. If you encounter Glut-related problems, set 
 H2D_WITH_GLUT to NO in Cmake.vars, build Hermes without Glut, and use VTK output for visualization. 
-For some reason tutorial example 34-remote-computing, the corresponding test, and the test 
-views/zoom-to-fit do not compile (as of November 24, 2010). We work on these problems as time 
-permits. 
 
 **Step 1**: Make sure you have XCode installed. This should be on the installation 
 disks which came with your Mac. XCode contains the GNU compilers, make 
@@ -56,42 +53,16 @@ command above with 'cmake -DCMAKE_INSTALL_PREFIX=/usr/local .').
 
 **Step 6**: Install Hermes by doing 'make install'.
 
-Tests
-~~~~~
-
-To execute all tests, do::
- 
-    make test
-
-Note that some of the tests take a long time to finish. To just execute the
-short running tests, do::
-
-    make test-quick
-
-
 More options
 ~~~~~~~~~~~~
 
 You can turn on and off various components to build, just create the CMake.vars
 file and add the following::
 
-    set(WITH_EXAMPLES NO)
+    set(H2D_WITH_GLUT NO)
     
 (and any other option that you would like to change, see CMakeLists.txt for the
 whole list).
-
-You can also easily generate it from a script (e.g. a debian/rules file) by:
-
-.. sourcecode::
-    .
-
-    python -c 'print "set(H2D_COMPLEX no)\nset(WITH_EXAMPLES no)\nset(WITH_TUTORIAL no)\nset(WITH_PYTHON yes)\nset(WITH_GLUT no)\nset(WITH_UTIL no)"' > CMake.vars
-
-.. latexcode::
-    .
-
-    python -c 'print "set(H2D_COMPLEX no)\nset(WITH_EXAMPLES no)\nset(WITH_TUTORIAL no)
-    \nset(WITH_PYTHON yes)\nset(WITH_GLUT no)\nset(WITH_UTIL no)"' > CMake.vars
 
 
 For development, it is good to say (in global CMake.vars)::

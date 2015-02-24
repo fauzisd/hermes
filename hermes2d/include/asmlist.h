@@ -16,7 +16,7 @@
 #ifndef __H2D_ASMLIST_H
 #define __H2D_ASMLIST_H
 
-#include "hermes2d_common_defs.h"
+#include "global.h"
 
 namespace Hermes
 {
@@ -28,19 +28,21 @@ namespace Hermes
     /// automatically by the class. The class provides a list of triples (idx, dof, coef).
     /// The triples are flattened to separate arrays of length 'cnt'.
     ///
+    /// @ingroup inner
     template<typename Scalar>
     class HERMES_API AsmList
     {
     public:
       /// Constructor.
       AsmList();
-      
+
       /// Destructor.
       ~AsmList();
 
       int* get_idx();
       int* get_dof();
       unsigned int get_cnt();
+      Scalar* get_coef();
     private:
       /// Copy constructor.
       AsmList(const AsmList<Scalar> & other);
@@ -50,13 +52,14 @@ namespace Hermes
       Scalar* coef;  ///< array of coefficients
       unsigned int cnt;       ///< the number of items in the arrays idx, dof and coef
       unsigned int cap;       ///< internal
-      
+
       /// Adds a record for one basis function (shape functions index, basis functions index, coefficient).
       void add_triplet(int i, int d, Scalar c);
 
       /// Internal. Enlarges the storage capacity.
       void enlarge();
       template<typename T> friend class DiscreteProblem;
+      template<typename T> friend class DiscreteProblemLinear;
       template<typename T> friend class NeighborSearch;
       template<typename T> friend class Solution;
       template<typename T> friend class Space;

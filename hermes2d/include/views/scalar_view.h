@@ -34,19 +34,6 @@ namespace Hermes
       // you can define NOGLUT to turn off all OpenGL stuff in Hermes2D
 #ifndef NOGLUT
 
-      /// GUI inside views (the current GUI uses AntTweakBar and it is still experimental)
-      /// to enable view define: ENABLE_VIEWER_GUI
-# ifdef ENABLE_VIEWER_GUI
-#   include <AntTweakBar.h>
-#   define VIEWER_GUI(__def) __def
-#   define VIEWER_GUI_CALLBACK(__clbk) if (__clbk) { refresh(); } else
-# else
-#   define TW_WND_ID_NONE -1
-#   define VIEWER_GUI(__def)
-#   define VIEWER_GUI_CALLBACK(__cblk)
-#   define TwBar void /* avoid necessity to define ENABLE_VIEWER_GUI in underlaying applications */
-# endif
-
       /// \brief Visualizes a Scalar PDE solution.
       ///
       /// ScalarView is a visualization window for all Scalar-valued PDE solutions.
@@ -58,9 +45,11 @@ namespace Hermes
         void init();
 #ifndef _MSC_VER
         ScalarView(const char* title = "ScalarView", WinGeom* wg = NULL);
+#else
+        ScalarView(WinGeom* wg = NULL);
 #endif
         ScalarView(char* title, WinGeom* wg = NULL);
-        virtual ~ScalarView();
+        ~ScalarView();
 
         void show(MeshFunction<double>* sln, double eps = HERMES_EPS_NORMAL, int item = H2D_FN_VAL_0,
           MeshFunction<double>* xdisp = NULL, MeshFunction<double>* ydisp = NULL, double dmult = 1.0);
@@ -71,24 +60,27 @@ namespace Hermes
         inline void show_bounding_box(bool show = true) { show_aabb = show; refresh(); }
         void show_contours(double step, double orig = 0.0);
         inline void hide_contours() { contours = false; refresh(); }
-        inline void set_3d_mode(bool enable = true) { mode3d = enable; refresh(); }
+        void set_3d_mode(bool enable = true);
         void set_vertical_scaling(double sc);  ///< Sets the scaling on the vertical axis programmatically.
         void set_min_max_range(double min, double max);  ///< Sets the limits on displayed values.
 
+        virtual void reset_view(bool force_reset); ///< Resets 2d and 3d view.
 
-      public:
-        Linearizer* lin;
+        /// Returns the internal linearizer for the purpose of parameter settings.
+        Linearizer* get_linearizer();
 
       protected:
+        /// Linearizer class responsible for obtaining linearized data.
+        Linearizer* lin;
+
         /// Information about a vertex node.
         struct VertexNodeInfo
         {
           float x, y; ///< location of the node in coordinates of the mesh
           int id; ///< id of the node
           bool selected; ///< true if the node is selected
-          TwBar* tw_bar; ///< a pointer to a gui window (CTwBar*) (GUI only).
           VertexNodeInfo() {}; ///< An empty default constructor to limit time
-          VertexNodeInfo(int id, float x, float y) : x(x), y(y), id(id), selected(false), tw_bar(NULL) {};
+          VertexNodeInfo(int id, float x, float y) : x(x), y(y), id(id), selected(false) {};
         };
         Hermes::vector<VertexNodeInfo> vertex_nodes; ///< Vertex nodes. Sorted accordin to the X-axis.
         VertexNodeInfo* pointed_vertex_node; ///< A vertex node that is under the mouse cursor. NULL if none.
@@ -100,7 +92,7 @@ namespace Hermes
         const int node_pixel_radius; ///< A radius of node selection, in pixels.
         const int node_widget_vert_cnt; ///< A number of vertices for a mesh node widget.
 
-        void init_vertex_nodes(Mesh* mesh); ///< Creates a copy of vertex nodes for purpose of displaying and selection.
+        void init_vertex_nodes(const Mesh* mesh); ///< Creates a copy of vertex nodes for purpose of displaying and selection.
         VertexNodeInfo* find_nearest_node_in_range(float x, float y, float radius); ///< Finds nearest node in range.
         static bool compare_vertex_nodes_x(const VertexNodeInfo& a, const VertexNodeInfo& b); ///< Returns true, if a's X-axis coordinate is lower than b's one. Used to sort mesh nodes for searching purposes.
         void draw_vertex_nodes(); ///< Draws vertex nodes.
@@ -110,8 +102,8 @@ namespace Hermes
       protected:
         struct ElementInfo ///< element info structure
         {
-          float x, y; ///< location of center [in physical coordinates]
-          float width, height; ///< width, height of AABB [in physical coordinates]
+          float x, y; ///< location of center[in physical coordinates]
+          float width, height; ///< width, height of AABB[in physical coordinates]
           int id; ///< element ID
           ElementInfo() : x(0), y(0), width(0), height(0), id(-1) {};
           ElementInfo(int id, float x, float y, float width, float height) : x(x), y(y), width(width), height(height), id(id) {};
@@ -122,15 +114,9 @@ namespace Hermes
 
         bool show_element_info; ///< true, to draw element info (currently ID) in 2D mode
 
-        void init_element_info(Mesh* mesh); ///< Creates element info from mesh.
+        void init_element_info(const Mesh* mesh); ///< Creates element info from mesh.
         void create_element_info_widgets(); ///< Creates element ID widgets if not created already.
         void draw_element_infos_2d(); ///< Draws elements infos in 2D mode.
-
-      protected: //GUI
-        int tw_wnd_id; ///< tw window ID
-        TwBar* tw_setup_bar; ///< setup bar
-
-        virtual void create_setup_bar(); ///< create setup bar. Assumes that current window is set
 
       protected: //values
 #define H2DV_GL_MAX_EDGE_BUFFER 128 ///< A maximum number of pairs per a buffer.
@@ -162,7 +148,6 @@ namespace Hermes
         void draw_edges_2d(); ///< draws edges
 
         void draw_normals_3d(); ////< Draws normals of the 3d mesh. Used for debugging purposses only.
-
 
       protected: //edges
         bool show_edges; ///< true to show edges of mesh
@@ -198,7 +183,6 @@ namespace Hermes
 
         double3* normals;
 
-
         /// This function calculates the distance that the model (3D plot of the solution over the whole solution domain) must be
         /// translated along the z-axis of the eye coordinate system, so that it fills the actual viewport without being clipped.
         /// The only case when the model will be clipped is when the user defines his own vertical range limits - unfortunately,
@@ -212,7 +196,6 @@ namespace Hermes
         ///      biggest horizontal (x-axis) distance from the origin.
         ///  4. Take the bigger of the two distances and reverse sign (since we will translate the model, not the camera)
         double calculate_ztrans_to_fit_view(); ///< Calculates the z-coordinate (in eye coordinates) of the closest viewpoint from which we can still see the whole model. Assumes a model/view matrix to be the current matrix on the OpenGL stack.
-        virtual void reset_view(bool force_reset); ///< Resets 2d and 3d view.
         virtual void update_layout(); ///< Updates layout, i.e., centers 2d and 3d mesh.
 
         void draw_tri_contours(double3* vert, int3* tri);
@@ -222,20 +205,33 @@ namespace Hermes
 
         virtual void on_display();
         virtual void on_key_down(unsigned char key, int x, int y);
-        virtual void on_special_key(int key, int x, int y);
         virtual void on_mouse_move(int x, int y);
         virtual void on_right_mouse_down(int x, int y); ///< Handles selecting/deselecting of nodes.
         virtual void on_middle_mouse_down(int x, int y);
         virtual void on_middle_mouse_up(int x, int y);
         virtual const char* get_help_text() const;
         virtual void on_close();
-        virtual void on_create(int output_id);
+      };
+#else
+class HERMES_API ScalarView : public View
+      {
+      public:
+				void init() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        ScalarView(const char* title = "ScalarView", WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        ScalarView(char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
 
-        virtual void on_left_mouse_down(int x, int y);
-        virtual void on_left_mouse_up(int x, int y);
-        virtual void on_right_mouse_up(int x, int y);
-        virtual void on_reshape(int width, int height);
+        void show(MeshFunction<double>* sln, double eps = HERMES_EPS_NORMAL, int item = H2D_FN_VAL_0,
+          MeshFunction<double>* xdisp = NULL, MeshFunction<double>* ydisp = NULL, double dmult = 1.0) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
 
+        void show_linearizer_data(double eps = HERMES_EPS_NORMAL, int item = H2D_FN_VAL_0) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        inline void show_mesh(bool show = true) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        inline void show_bounding_box(bool show = true) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void show_contours(double step, double orig = 0.0) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        inline void hide_contours() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        inline void set_3d_mode(bool enable = true) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_vertical_scaling(double sc) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_min_max_range(double min, double max) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
       };
 #endif
     }

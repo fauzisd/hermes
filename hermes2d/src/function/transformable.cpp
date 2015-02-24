@@ -77,9 +77,9 @@ namespace Hermes
 
     void Transformable::set_active_element(Element* e)
     {
-      _F_
-        if (e==NULL) throw Exceptions::NullException(1);
+      if(e==NULL) throw Exceptions::NullException(1);
       element = e;
+      this->reset_transform();
     }
 
     void Transformable::set_transform(uint64_t idx)
@@ -99,8 +99,8 @@ namespace Hermes
     void Transformable::push_transform(int son)
     {
       assert(element != NULL);
-      if (top >= H2D_MAX_TRN_LEVEL)
-        error("Too deep transform.");
+      if(top >= H2D_MAX_TRN_LEVEL)
+        throw Hermes::Exceptions::Exception("Too deep transform.");
 
       Trf* mat = stack + (++top);
       Trf* tr = (element->is_triangle() ? tri_trf + son : quad_trf + son);
@@ -116,13 +116,13 @@ namespace Hermes
 
     void Transformable::push_transforms(std::set<Transformable *>& transformables, int son)
     {
-      for(std::set<Transformable *>::iterator it = transformables.begin(); it != transformables.end(); it++)
+      for(std::set<Transformable *>::iterator it = transformables.begin(); it != transformables.end(); ++it)
         if(*it != NULL)
           (*it)->push_transform(son);
     }
     void Transformable::pop_transforms(std::set<Transformable *>& transformables)
     {
-      for(std::set<Transformable *>::iterator it = transformables.begin(); it != transformables.end(); it++)
+      for(std::set<Transformable *>::iterator it = transformables.begin(); it != transformables.end(); ++it)
         if(*it != NULL)
           (*it)->pop_transform();
     }

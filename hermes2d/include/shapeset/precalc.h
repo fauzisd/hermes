@@ -23,6 +23,8 @@ namespace Hermes
 {
   namespace Hermes2D
   {
+    enum SpaceType;
+    /// @ingroup meshFunctions
     /// \brief Caches precalculated shape function values.
     ///
     /// PrecalcShapeset is a cache of precalculated shape function values.
@@ -30,12 +32,12 @@ namespace Hermes
     ///
     class HERMES_API PrecalcShapeset : public Function<double>
     {
-    public:      
+    public:
       /// Returns type of space
       SpaceType get_space_type() const;
 
       /// \brief Constructs a standard (master) precalculated shapeset class.
-      /// \param shapeset [in] Pointer to the shapeset to be precalculated.
+      /// \param shapeset[in] Pointer to the shapeset to be precalculated.
       PrecalcShapeset(Shapeset* shapeset);
 
       /// \brief Constructs a slave precalculated shapeset class.
@@ -44,40 +46,38 @@ namespace Hermes
       /// the slave can have different shape function active, different transform
       /// selected, etc. Slave pss's are used for test functions when calling
       /// bilinear forms, inside Solution so as not to disrupt user's pss, etc.
-      /// \param master_pss [in] Master precalculated shapeset pointer.
+      /// \param master_pss[in] Master precalculated shapeset pointer.
       PrecalcShapeset(PrecalcShapeset* master_pss);
 
       /// Destructor.
       virtual ~PrecalcShapeset();
-    
+
+      /// Ensures subsequent calls to get_active_element() will be returning 'e'.
+      /// Switches the class to the appropriate mode (triangle, quad).
+      virtual void set_active_element(Element* e);
+
+      /// Activates a shape function given by its index. The values of the shape function
+      /// can then be obtained by setting the required integration rule order by calling
+      /// set_quad_order() and after that calling get_values(), get_dx_values(), etc.
+      /// \param index[in] Shape index.
+      void set_active_shape(int index);
+
     private:
       virtual void set_quad_2d(Quad2D* quad_2d);
 
       /// \brief Frees all precalculated tables.
       virtual void free();
 
-      /// Ensures subsequent calls to get_active_element() will be returning 'e'.
-      /// Switches the class to the appropriate mode (triangle, quad).
-      virtual void set_active_element(Element* e);
-
       /// Virtual function handling overflows. Has to be virtual, because
       /// the necessary iterators in the templated class do not work with GCC.
       virtual void handle_overflow_idx();
 
-      /// Activates a shape function given by its index. The values of the shape function
-      /// can then be obtained by setting the required integration rule order by calling
-      /// set_quad_order() and after that calling get_values(), get_dx_values(), etc.
-      /// \param index [in] Shape index.
-      void set_active_shape(int index);
 
       /// Returns the index of the active shape (can be negative if the shape is constrained).
       int get_active_shape() const;
 
       /// Returns a pointer to the shapeset which is being precalculated.
       Shapeset* get_shapeset() const;
-
-      /// Internal. Use set_active_element() instead.
-      void set_mode(int mode);
 
       /// For internal use only.
       void set_master_transform();
@@ -103,11 +103,9 @@ namespace Hermes
       /// and shape function index to a table from the middle layer.
       LightArray<std::map<uint64_t, LightArray<Node*>*>*> tables;
 
-      int mode;
-
       int index;
 
-      int max_index[2];
+      int max_index[H2D_NUM_MODES];
 
       PrecalcShapeset* master_pss;
 

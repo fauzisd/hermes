@@ -19,13 +19,13 @@
 #include <ostream>
 #include "order_permutator.h"
 #include "selector.h"
+#include "../shapeset/shapeset.h"
 
 namespace Hermes
 {
   namespace Hermes2D
   {
     namespace RefinementSelectors {
-
       /// Predefined list of candidates. \ingroup g_selectors
       enum CandList {
         H2D_NONE,  ///< No adaptivity. (Used only in modules.)
@@ -81,13 +81,13 @@ namespace Hermes
           double error; ///< An error of this candidate.
           int dofs;  ///< An estimated number of DOFs.
           int split; ///< A refinement, see the enum RefinementType.
-          int p[4]; ///< Encoded orders of sons, see ::H2D_MAKE_QUAD_ORDER. In a case of a triangle, the vertical order is equal to the horizontal one.
+          int p[H2D_MAX_ELEMENT_SONS]; ///< Encoded orders of sons, see ::H2D_MAKE_QUAD_ORDER. In a case of a triangle, the vertical order is equal to the horizontal one.
           double score; ///< A score of a candidate: the higher the better. If zero, the score is not valid and a candidate should be ignored. Evaluated in OptimumSelector::select_best_candidate.
 
           /// Constructor.
           /** \param[in] split A refinement, see the enum RefinementTypes.
           *  \param[in] order_elems Encoded orders for all element of candidate. If triangle, a vertical order has to be equal to the horizontal one. Unused elements of the array can be ignored. */
-          Cand(const int split, const int order_elems[4])
+          Cand(const int split, const int order_elems[H2D_MAX_ELEMENT_SONS])
             : dofs(-1), split(split), score(0) {
               p[0] = order_elems[0];
               p[1] = order_elems[1];
@@ -119,7 +119,7 @@ namespace Hermes
             case H2D_REFINEMENT_ANISO_V:
               return 2;
             default:
-              error("Invalid refinement type %d.", split);
+              throw Hermes::Exceptions::Exception("Invalid refinement type %d.", split);
               return -1;
               break;
             }
@@ -129,6 +129,13 @@ namespace Hermes
         /// Returns a vector of the last generated candidates.
         /** \return A vector of last generated candidates. The vector will change if a new list is generated. */
         const Hermes::vector<Cand>& get_candidates() const { return candidates; };
+
+        /// Number of shape functions for
+        /// - mode
+        /// - horizontal order + 1 (any)
+        /// - vertical order + 1 (any)
+        /// - shape function type
+        int ****num_shapes;
 
       protected: //candidates
         /// Information about candidates.
@@ -167,7 +174,7 @@ namespace Hermes
         /// Fill a list of candidates.
         /** Override to generate or adjust generated candidates. The method has to initialize the array OptimumSelector::candidates.
         *  If triangle, all generated candidates have to have the vertical order equal to the horizontal order.
-        *  An order of any element of any candidate has to fit into a range [OptimumSelector::current_min_order, OptimumSelector::current_max_order].
+        *  An order of any element of any candidate has to fit into a range[OptimumSelector::current_min_order, OptimumSelector::current_max_order].
         *  \param[in] e An element that is being refined.
         *  \param[in] quad_order An encoded order of the element. If triangle, the vertical order is equal to the horizontal order.
         *  \param[in] max_ha_quad_order A maximum encoded order of an element of a H-candidate or an ANISO-candidate. In the case of ANIO-candidates, the maximum is applied only to modified orders.
@@ -250,6 +257,15 @@ namespace Hermes
           H2DST_BUBBLE = 0x10 ///< Bubble function.
         };
 
+        enum ShapeTypeInt {
+          H2DSI_VERTEX,
+          H2DSI_HORIZ_EDGE,
+          H2DSI_VERT_EDGE,
+          H2DSI_TRI_EDGE,
+          H2DSI_BUBBLE,
+          H2DSI_ANY
+        };
+
         /// A shape index.
         /** Any element order higher than both the vertical and the horizontal direction will use a given shape function. */
         struct ShapeInx {
@@ -265,9 +281,9 @@ namespace Hermes
           *  \param[in] type A type of the shape function. */
           ShapeInx(int order_h, int order_v, int inx, ShapeType type) : order_h(order_h), order_v(order_v), inx(inx), type(type) {};
         };
-        
+
         /// Range of values.
-        class Range 
+        class Range
         {
         protected:
           int lower_bound;    ///< Lower boundary.
@@ -288,7 +304,7 @@ namespace Hermes
           template<typename T> friend class ProjBasedSelector;
           template<typename T> friend class H1ProjBasedSelector;
           template<typename T> friend class L2ProjBasedSelector;
-          friend class HcurlProjBasedSelector;
+          template<typename T> friend class HcurlProjBasedSelector;
         };
 
         Shapeset *shapeset; ///< A shapeset used to calculate error.
@@ -310,7 +326,7 @@ namespace Hermes
         *  \param[in] order_v A vertical order of an element.
         *  \param[in,out] used_shape_index A vector of used shape indices. If a shape index is present in the map, a shape was already added and it will not be added again.
         *  \param[in,out] indices A vector of shape indices. The vector is updated by the function. */
-        void add_bubble_shape_index(int order_h, int order_v, std::map<int, bool>& used_shape_index, Hermes::vector<ShapeInx>& indices);
+        void add_bubble_shape_index(int order_h, int order_v, std::map<int, bool>& used_shape_index, Hermes::vector<ShapeInx>& indices, ElementMode2D mode);
 
         /// Builds shape index table OptimumSelector::shape_indices.
         /** The method fills the array OptimumSelector::shape_indices for a given mode.
@@ -318,7 +334,7 @@ namespace Hermes
         *  \param[in] mode A mode (ElementMode2D).
         *  \param[in] vertex_order A range of orders in which to search for vertex functions.
         *  \param[in] edge_bubble_order A range of order in which to search for edge and bubble functions. */
-        void build_shape_indices(const int mode, const Range& vertex_order, const Range& edge_bubble_order);
+        void build_shape_indices(const ElementMode2D mode, const Range& vertex_order, const Range& edge_bubble_order);
 
         /// Returns a number of shapes that may be contained in an element of a given order.
         /** \param[in] mode A mode (ElementMode2D).
@@ -340,7 +356,7 @@ namespace Hermes
 
       public:
         /// Destructor.
-        virtual ~OptimumSelector() {};
+        virtual ~OptimumSelector();
       protected:
         /// Selects a refinement.
         /** Overriden function. For details, see Selector::select_refinement(). */

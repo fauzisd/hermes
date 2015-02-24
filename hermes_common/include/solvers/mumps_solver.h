@@ -23,7 +23,7 @@
 #define __HERMES_COMMON_MUMPS_SOLVER_H_
 #include "config.h"
 #ifdef WITH_MUMPS
-#include "linear_solver.h"
+#include "linear_matrix_solver.h"
 #include "matrix.h"
 
 extern "C"
@@ -71,12 +71,11 @@ namespace Hermes
       typedef double mumps_Scalar;
     };
 
-
     /** \brief Matrix used with MUMPS solver */
     template <typename Scalar>
     class MumpsMatrix : public SparseMatrix<Scalar>
     {
-    protected:
+    public:
       MumpsMatrix();
       virtual ~MumpsMatrix();
 
@@ -87,7 +86,7 @@ namespace Hermes
       virtual void add(unsigned int m, unsigned int n, Scalar v);
       virtual void add_to_diagonal(Scalar v);
       virtual void add(unsigned int m, unsigned int n, Scalar **mat, int *rows, int *cols);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
       virtual unsigned int get_matrix_size() const;
       virtual unsigned int get_nnz() const;
       virtual double get_fill_in() const;
@@ -124,13 +123,14 @@ namespace Hermes
       unsigned int *Ap;          ///< Index to Ax/Ai, where each column starts.
 
       friend class Solvers::MumpsSolver<Scalar>;
+      template<typename T> friend SparseMatrix<T>*  create_matrix();
     };
 
     /** \brief Vector used with MUMPS solver */
     template <typename Scalar>
     class MumpsVector : public Vector<Scalar>
     {
-    protected:
+    public:
       MumpsVector();
       virtual ~MumpsVector();
 
@@ -145,7 +145,7 @@ namespace Hermes
       virtual void add(unsigned int n, unsigned int *idx, Scalar *y);
       virtual void add_vector(Vector<Scalar>* vec);
       virtual void add_vector(Scalar* vec);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
 
     protected:
       // MUMPS specific data structures for storing the rhs.
@@ -163,9 +163,7 @@ namespace Hermes
     template <typename Scalar>
     class HERMES_API MumpsSolver : public DirectSolver<Scalar>
     {
-    private:
-      void mumps_c(typename mumps_type<Scalar>::mumps_struct * param);  //wrapper around dmums_c or zmumps_c
-    protected:
+    public:
       /// Constructor of MumpsSolver.
       /// @param[in] m matrix pointer
       /// @param[in] rhs right hand side pointer
@@ -173,8 +171,8 @@ namespace Hermes
       virtual ~MumpsSolver();
 
       virtual bool solve();
+      virtual int get_matrix_size();
 
-    protected:
       /// Matrix to solve.
       MumpsMatrix<Scalar> *m;
       /// Right hand side.
@@ -195,6 +193,8 @@ namespace Hermes
       bool reinit();
       /// True if solver is inited.
       bool inited;
+    private:
+      void mumps_c(typename mumps_type<Scalar>::mumps_struct * param);  //wrapper around dmums_c or zmumps_c
     };
   }
 }

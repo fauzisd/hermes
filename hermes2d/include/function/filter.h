@@ -25,6 +25,7 @@ namespace Hermes
   {
     struct UniData;
 
+    /// @ingroup meshFunctions
     /// Filter is a general postprocessing class, intended for visualization.
     /// The output of Filter is an arbitrary combination of up to three input functions,
     /// which usually are Solutions to PDEs, but can also be other Filters.
@@ -35,16 +36,17 @@ namespace Hermes
     class HERMES_API Filter : public MeshFunction<Scalar>
     {
     public:
-
-      Filter() {};
-
+      Filter();
       Filter(const Hermes::vector<MeshFunction<Scalar>*>& solutions);
-
+      Filter(MeshFunction<Scalar>** solutions, int num);
       Filter(const Hermes::vector<Solution<Scalar>*>& solutions);
 
       virtual ~Filter();
-      
+
       virtual void reinit();
+
+      /// State querying helpers.
+      inline std::string getClassName() const { return "Filter"; }
 
     protected:
       void init(const Hermes::vector<MeshFunction<Scalar>*>& solutions);
@@ -63,9 +65,9 @@ namespace Hermes
 
       int num;
 
-      MeshFunction<Scalar>* sln[10];
+      MeshFunction<Scalar>* sln[H2D_MAX_COMPONENTS];
 
-      uint64_t sln_sub[10];
+      uint64_t sln_sub[H2D_MAX_COMPONENTS];
 
       /// There is a 2-layer structure of the precalculated tables.
       /// The first (the lowest) one is the layer where mapping of integral orders to
@@ -75,9 +77,9 @@ namespace Hermes
       /// The highest layer (in contrast to the PrecalcShapeset class) is represented
       /// here only by this array.
 #ifdef _MSC_VER // For Visual Studio compiler the latter does not compile.
-      std::map<uint64_t, LightArray<Node*>*> tables[10];
+      std::map<uint64_t, LightArray<Node*>*> tables[H2D_MAX_QUADRATURES];
 #else
-      std::map<uint64_t, LightArray<struct Filter<Scalar>::Node*>*> tables[10];
+      std::map<uint64_t, LightArray<struct Filter<Scalar>::Node*>*> tables[H2D_MAX_QUADRATURES];
 #endif
 
       bool unimesh;
@@ -85,9 +87,12 @@ namespace Hermes
       UniData** unidata;
 
       void copy_base(Filter* flt);
-
+      
+      virtual void setDeleteSolutions();
+      bool deleteSolutions;
     };
 
+    /// @ingroup meshFunctions
     /// SimpleFilter is a base class for predefined simple filters (MagFilter, DiffFilter...).
     /// The 'simplicity' lies in the fact that only one value per input function can be
     /// combined (e.g., not a value and a derivative). If this is not sufficient, a full-fledged
@@ -107,17 +112,17 @@ namespace Hermes
     class HERMES_API SimpleFilter : public Filter<Scalar>
     {
     public:
-
-      SimpleFilter() {};
+      SimpleFilter();
+      virtual ~SimpleFilter();
 
       SimpleFilter(const Hermes::vector<MeshFunction<Scalar>*>& solutions, const Hermes::vector<int>& items = Hermes::vector<int>());
 
       SimpleFilter(const Hermes::vector<Solution<Scalar>*>& solutions, const Hermes::vector<int>& items = Hermes::vector<int>());
 
-      virtual Scalar get_pt_value(double x, double y, int item = H2D_FN_VAL_0);
+      virtual Func<Scalar>* get_pt_value(double x, double y, Element* e = NULL);
 
     protected:
-      int item[10];
+      int item[H2D_MAX_COMPONENTS];
 
       virtual void filter_fn(int n, Hermes::vector<Scalar*> values, Scalar* result) = 0;
 
@@ -126,6 +131,7 @@ namespace Hermes
 
     };
 
+    /// @ingroup meshFunctions
     /// ComplexFilter is used to transform complex solutions into its real parts.
     ///
     class HERMES_API ComplexFilter : public Filter<double>
@@ -133,9 +139,10 @@ namespace Hermes
     public:
       ComplexFilter(MeshFunction<std::complex<double> >* solution, int item = H2D_FN_VAL_0);
 
+      virtual ~ComplexFilter();
     protected:
-      virtual double get_pt_value(double x, double y, int item = H2D_FN_VAL_0);
-      
+      virtual Func<double>* get_pt_value(double x, double y, Element* e = NULL);
+
       virtual void set_quad_2d(Quad2D* quad_2d);
 
       virtual void set_active_element(Element* e);
@@ -143,7 +150,7 @@ namespace Hermes
       virtual void push_transform(int son);
 
       virtual void pop_transform();
-      
+
       virtual void free();
       MeshFunction<std::complex<double> >* sln_complex;
 
@@ -154,6 +161,7 @@ namespace Hermes
       virtual void precalculate(int order, int mask);
     };
 
+    /// @ingroup meshFunctions
     /// DXDYFilter is a more advanced version of SimpleFilter. It allows combining derivatives
     /// of the inputs and also, unlike SimpleFilter, it defines derivatives of the filtered
     /// result. The user-supplied combining function has a different format: it takes and must
@@ -164,16 +172,17 @@ namespace Hermes
     {
     public:
       // one result (rslt), all inputs and result including derivatives
-      DXDYFilter() {};
+      DXDYFilter();
 
       DXDYFilter(const Hermes::vector<MeshFunction<Scalar>*>& solutions);
 
       DXDYFilter(const Hermes::vector<Solution<Scalar>*>& solutions);
 
+      virtual ~DXDYFilter();
     protected:
       void init(const Hermes::vector<MeshFunction<Scalar>*>& solutions);
 
-      virtual Scalar get_pt_value(double x, double y, int item = H2D_FN_VAL_0);
+      virtual Func<Scalar>* get_pt_value(double x, double y, Element* e = NULL);
 
       virtual void filter_fn (int n, Hermes::vector<Scalar *> values, Hermes::vector<Scalar *> dx, Hermes::vector<Scalar *> dy, Scalar* rslt, Scalar* rslt_dx, Scalar* rslt_dy) = 0;
 
@@ -182,7 +191,24 @@ namespace Hermes
       virtual void precalculate(int order, int mask);
     };
 
+    /// @ingroup meshFunctions
+    /// MagFilter takes two functions representing the components of a vector function and
+    /// calculates the vector magnitude, sqrt(x^2 + y^2).
+    /// \brief Calculates the magnitude of a vector function.
+    template<typename Scalar>
+    class HERMES_API DXFilter : public DXDYFilter<Scalar>
+    {
+    public:
+      DXFilter(const Hermes::vector<MeshFunction<Scalar>*>& solutions);
+      
+      virtual MeshFunction<Scalar>* clone() const;
 
+      virtual ~DXFilter();
+    protected:
+      virtual void filter_fn(int n, Hermes::vector<Scalar *> values, Hermes::vector<Scalar *> dx, Hermes::vector<Scalar *> dy, Scalar* rslt, Scalar* rslt_dx, Scalar* rslt_dy);
+    };
+
+    /// @ingroup meshFunctions
     /// MagFilter takes two functions representing the components of a vector function and
     /// calculates the vector magnitude, sqrt(x^2 + y^2).
     /// \brief Calculates the magnitude of a vector function.
@@ -190,106 +216,176 @@ namespace Hermes
     class HERMES_API MagFilter : public SimpleFilter<Scalar>
     {
     public:
-      MagFilter() {};
-
       MagFilter(Hermes::vector<MeshFunction<Scalar>*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
 
       MagFilter(MeshFunction<Scalar>* sln1, int item1 = H2D_FN_VAL); ///< for vector-valued sln1
+      virtual MeshFunction<Scalar>* clone() const;
 
+      virtual ~MagFilter();
     protected:
       virtual void filter_fn(int n, Hermes::vector<Scalar*> values, Scalar* result);
     };
 
+    /// @ingroup meshFunctions
+    /// TopValFilter takes functions and puts a threshold on their highest values.
+    class HERMES_API TopValFilter : public SimpleFilter<double>
+    {
+    public:
+      TopValFilter(Hermes::vector<MeshFunction<double>*> solutions, Hermes::vector<double> limits, Hermes::vector<int> items = *(new Hermes::vector<int>));
 
+      TopValFilter(MeshFunction<double>* sln, double limit, int item = H2D_FN_VAL_0); ///< for vector-valued sln1
+      virtual MeshFunction<double>* clone() const;
+
+      virtual ~TopValFilter();
+    protected:
+      virtual void filter_fn(int n, Hermes::vector<double*> values, double* result);
+      Hermes::vector<double> limits;
+    };
+
+    /// @ingroup meshFunctions
+    /// BottomValFilter takes functions and puts a threshold on their lowest values.
+    class HERMES_API BottomValFilter : public SimpleFilter<double>
+    {
+    public:
+      BottomValFilter(Hermes::vector<MeshFunction<double>*> solutions, Hermes::vector<double> limits, Hermes::vector<int> items = *(new Hermes::vector<int>));
+
+      BottomValFilter(MeshFunction<double>* sln, double limit, int item = H2D_FN_VAL_0); ///< for vector-valued sln1
+      virtual MeshFunction<double>* clone() const;
+
+      virtual ~BottomValFilter();
+    protected:
+      virtual void filter_fn(int n, Hermes::vector<double*> values, double* result);
+      Hermes::vector<double> limits;
+    };
+
+    /// @ingroup meshFunctions
+    /// ValFilter takes functions and puts a threshold on their lowest AND highest values.
+    class HERMES_API ValFilter : public SimpleFilter<double>
+    {
+    public:
+      ValFilter(Hermes::vector<MeshFunction<double>*> solutions, Hermes::vector<double> low_limits, Hermes::vector<double> high_limits, Hermes::vector<int> items = *(new Hermes::vector<int>));
+
+      ValFilter(MeshFunction<double>* sln, double low_limit, double high_limit, int item = H2D_FN_VAL_0); ///< for vector-valued sln1
+      virtual MeshFunction<double>* clone() const;
+
+      virtual ~ValFilter();
+    protected:
+      virtual void filter_fn(int n, Hermes::vector<double*> values, double* result);
+      Hermes::vector<double> low_limits;
+      Hermes::vector<double> high_limits;
+    };
+
+    /// @ingroup meshFunctions
     /// Calculates the difference of two functions.
     template<typename Scalar>
     class HERMES_API DiffFilter : public SimpleFilter<Scalar>
     {
     public:
       DiffFilter(Hermes::vector<MeshFunction<Scalar>*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
+      virtual MeshFunction<Scalar>* clone() const;
+      virtual ~DiffFilter();
 
     protected:
       virtual void filter_fn(int n, Hermes::vector<Scalar*> values, Scalar* result);
     };
 
-
+    /// @ingroup meshFunctions
     /// Calculates the sum of two functions.
     template<typename Scalar>
     class HERMES_API SumFilter : public SimpleFilter<Scalar>
     {
     public:
       SumFilter(Hermes::vector<MeshFunction<Scalar>*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
+      virtual MeshFunction<Scalar>* clone() const;
+      virtual ~SumFilter();
 
     protected:
       virtual void filter_fn(int n, Hermes::vector<Scalar*> values, Scalar* result);
     };
 
-
+    /// @ingroup meshFunctions
     /// Calculates the square of a function.
     template<typename Scalar>
     class HERMES_API SquareFilter : public SimpleFilter<Scalar>
     {
     public:
       SquareFilter(Hermes::vector<MeshFunction<Scalar>*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
+      virtual MeshFunction<Scalar>* clone() const;
+      virtual ~SquareFilter();
 
     protected:
       virtual void filter_fn(int n, Hermes::vector<Scalar*> values, Scalar* result);
     };
 
+    /// @ingroup meshFunctions
     /// Calculates absolute value of a real solution.
     class HERMES_API AbsFilter : public SimpleFilter<double>
     {
     public:
       AbsFilter(Hermes::vector<MeshFunction<double>*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
       AbsFilter(MeshFunction<double>* solution);
+      virtual MeshFunction<double>* clone() const;
+      virtual ~AbsFilter();
 
     protected:
       virtual void filter_fn(int n, Hermes::vector<double*> values, double* result);
     };
 
+    /// @ingroup meshFunctions
     /// Removes the imaginary part from a function.
     class HERMES_API RealFilter : public ComplexFilter
     {
     public:
       RealFilter(MeshFunction<std::complex<double> >* solution, int item = H2D_FN_VAL_0);
+      virtual ~RealFilter();
+
+      virtual MeshFunction<double>* clone() const;
 
     protected:
       virtual void filter_fn(int n, std::complex<double>* values, double* result);
     };
 
-
+    /// @ingroup meshFunctions
     /// ImagFilter puts the imaginary part of the input function to the Real part of the
     /// output, allowing it to be visualized.
     class HERMES_API ImagFilter : public ComplexFilter
     {
     public:
       ImagFilter(MeshFunction<std::complex<double> >* solution, int item = H2D_FN_VAL_0);
+      virtual ~ImagFilter();
 
+      virtual MeshFunction<double>* clone() const;
     protected:
       virtual void filter_fn(int n, std::complex<double>* values, double* result);
     };
 
+    /// @ingroup meshFunctions
     /// Computes the absolute value of a complex solution.
     class HERMES_API ComplexAbsFilter : public ComplexFilter
     {
     public:
       ComplexAbsFilter(MeshFunction<std::complex<double> >* solution, int item = H2D_FN_VAL_0);
+      virtual ~ComplexAbsFilter();
+
+      virtual MeshFunction<double>* clone() const;
 
     protected:
       virtual void filter_fn(int n, std::complex<double>* values, double* result);
     };
 
+    /// @ingroup meshFunctions
     /// Computes the angle of a complex solution.
     class HERMES_API AngleFilter : public SimpleFilter<std::complex<double> >
     {
     public:
       AngleFilter(Hermes::vector<MeshFunction<std::complex<double> >*> solutions, Hermes::vector<int> items = *(new Hermes::vector<int>));
+      virtual ~AngleFilter();
 
     protected:
       virtual void filter_fn(int n, Hermes::vector<std::complex<double>*> values, double* result);
     };
 
-
+    /// @ingroup meshFunctions
     /// VonMisesFilter is a postprocessing filter for visualizing elastic stresses in a body.
     /// It calculates the stress tensor and applies the Von Mises equivalent stress formula
     /// to obtain the resulting stress measure.
@@ -300,8 +396,13 @@ namespace Hermes
 
       VonMisesFilter(Hermes::vector<MeshFunction<double>*> solutions, double lambda, double mu,
         int cyl = 0, int item1 = H2D_FN_VAL, int item2 = H2D_FN_VAL);
+      VonMisesFilter(MeshFunction<double>** solutions, int num, double lambda, double mu,
+        int cyl = 0, int item1 = H2D_FN_VAL, int item2 = H2D_FN_VAL);
 
-      virtual double get_pt_value(double x, double y, int item = H2D_FN_VAL_0);
+      virtual Func<double>* get_pt_value(double x, double y, Element* e = NULL);
+
+      virtual MeshFunction<double>* clone() const;
+      virtual ~VonMisesFilter();
 
     protected:
       double lambda, mu;
@@ -311,7 +412,7 @@ namespace Hermes
       virtual void precalculate(int order, int mask);
     };
 
-
+    /// @ingroup meshFunctions
     /// Linearization filter for use in nonlinear problems. From one or two previous
     /// solution values it extrapolates an estimate of the new one.
     /// With adaptive time step: tau_frac = tau_new / tau_old
@@ -323,7 +424,9 @@ namespace Hermes
 
       LinearFilter(MeshFunction<Scalar>* older, MeshFunction<Scalar>* old, double tau_frac = 1);
 
-      virtual Scalar get_pt_value(double x, double y, int item = H2D_FN_VAL_0);
+      virtual Func<Scalar>* get_pt_value(double x, double y, Element* e = NULL);
+      virtual MeshFunction<Scalar>* clone() const;
+      virtual ~LinearFilter();
 
     protected:
       double tau_frac;
@@ -337,4 +440,3 @@ namespace Hermes
   }
 }
 #endif
-

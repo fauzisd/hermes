@@ -44,12 +44,16 @@ namespace Hermes
         ~VectorView();
 
         void show(MeshFunction<double>* vsln, double eps = HERMES_EPS_NORMAL);
-        void show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps = HERMES_EPS_NORMAL);
-        void show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps, int xitem, int yitem);
+        void show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps = HERMES_EPS_NORMAL, int xitem = H2D_FN_VAL_0, int yitem = H2D_FN_VAL_0, MeshFunction<double>* xdisp = NULL, MeshFunction<double>* ydisp = NULL, double dmult = 1.0);
 
         inline void set_grid_type(bool hexa) { this->hexa = hexa; refresh(); };
+        void set_mode(int mode);
+      
+        /// Returns the internal vectorizer for the purpose of parameter settings.
+        Vectorizer* get_vectorizer();
 
       protected:
+        /// Vectorizer class responsible for obtaining linearized data.
         Vectorizer* vec;
 
         double gx, gy, gs;
@@ -64,7 +68,19 @@ namespace Hermes
         virtual void on_mouse_move(int x, int y);
         virtual void on_key_down(unsigned char key, int x, int y);
         virtual const char* get_help_text() const;
+      };
+#else
+      class HERMES_API VectorView : public View
+      {
+      public:
+        VectorView(const char* title = "VectorView", WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        VectorView(char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
 
+        void show(MeshFunction<double>* vsln, double eps = HERMES_EPS_NORMAL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps = HERMES_EPS_NORMAL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps, int xitem, int yitem) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        inline void set_grid_type(bool hexa) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
       };
 #endif
     }

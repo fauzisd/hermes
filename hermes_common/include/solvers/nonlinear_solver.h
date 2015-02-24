@@ -24,6 +24,7 @@
 
 #include "precond.h"
 #include "dp_interface.h"
+#include "mixins.h"
 
 namespace Hermes
 {
@@ -32,11 +33,10 @@ namespace Hermes
     /// \brief Base class for defining interface for nonlinear solvers.
     ///
     template <typename Scalar>
-    class NonlinearSolver
+    class NonlinearSolver : public Hermes::Mixins::Loggable, public Hermes::Mixins::TimeMeasurable, public Hermes::Mixins::IntegrableWithGlobalOrder, public Hermes::Mixins::SettableComputationTime
     {
     public:
       NonlinearSolver(DiscreteProblemInterface<Scalar>* dp);
-      NonlinearSolver(DiscreteProblemInterface<Scalar>* dp, Hermes::MatrixSolverType matrix_solver_type);
 
       ~NonlinearSolver();
 
@@ -45,11 +45,6 @@ namespace Hermes
       virtual void solve(Scalar* coeff_vec);
 
       Scalar *get_sln_vector();
-
-      double get_time();
-
-      /// Sets the attribute verbose_output to the paramater passed.
-      void set_verbose_output(bool verbose_output_to_set);
 
       /// Set the name of the iterative method employed by AztecOO (ignored
       /// by the other solvers).
@@ -60,7 +55,7 @@ namespace Hermes
       /// the other solvers).
       /// \param[in] preconditioner_name See the attribute preconditioner.
       void set_preconditioner(const char* preconditioner_name);
-
+    
     protected:
       DiscreteProblemInterface<Scalar>* dp; ///< FE problem being solved (not NULL in case of using
       ///< NonlinearProblem(DiscreteProblemInterface *) ctor.
@@ -70,18 +65,6 @@ namespace Hermes
 
       /// For use of error measurement.
       int error;
-
-      double time;  ///< time spent on solving (in secs)
-
-      /// Linear solver to use, choices:
-      /// SOLVER_AMESOS, SOLVER_AZTECOO, SOLVER_MUMPS,
-      /// SOLVER_PETSC, SOLVER_SUPERLU, SOLVER_UMFPACK.
-      /// Default: SOLVER_UMFPACK.
-      Hermes::MatrixSolverType matrix_solver_type;
-
-      /// Verbose output.
-      /// Set to 'true' by default.
-      bool verbose_output;
 
       /// Preconditioned solver.
       bool precond_yes;

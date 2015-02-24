@@ -16,7 +16,7 @@
 #ifndef NOGLUT
 
 #include <GL/freeglut.h>
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "vector_view.h"
 
 namespace Hermes
@@ -25,10 +25,10 @@ namespace Hermes
   {
     namespace Views
     {
-
       VectorView::VectorView(const char* title, WinGeom* wg)
-        : View(title, wg), vec(NULL)
+        : View(title, wg)
       {
+        vec = new Vectorizer;
         gx = gy = 0.0;
         gs = 20.0;
         hexa = true;
@@ -38,10 +38,10 @@ namespace Hermes
         length_coef = 1.0;
       }
 
-
       VectorView::VectorView(char* title, WinGeom* wg)
-        : View(title, wg), vec(NULL)
+        : View(title, wg)
       {
+        vec = new Vectorizer;
         gx = gy = 0.0;
         gs = 20.0;
         hexa = true;
@@ -60,30 +60,29 @@ namespace Hermes
       {
         if(vec == NULL)
           vec = new Vectorizer;
-        if (vsln->get_num_components() < 2)
-          error("The single-argument version of show() is only for vector-valued solutions.");
+        if(vsln->get_num_components() < 2)
+          throw Hermes::Exceptions::Exception("The single-argument version of show() is only for vector-valued solutions.");
         show(vsln, vsln, eps, H2D_FN_VAL_0, H2D_FN_VAL_1);
       }
 
-
-      void VectorView::show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps)
+      void VectorView::show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps, int xitem, int yitem, MeshFunction<double>* xdisp, MeshFunction<double>* ydisp, double dmult)
       {
         if(vec == NULL)
           vec = new Vectorizer;
-        if (xsln == ysln)
-          warning("Identical solutions passed to the two-argument version of show(). Most likely this is a mistake.");
-        show(xsln, ysln, eps, H2D_FN_VAL_0, H2D_FN_VAL_0);
-      }
 
+        if(xsln != NULL && ysln != NULL && xsln == ysln)
+          this->warn("Identical solutions passed to the two-argument version of show(). Most likely this is a mistake.");
+        
+        vec->set_displacement(xdisp, ydisp, dmult);
 
-      void VectorView::show(MeshFunction<double>* xsln, MeshFunction<double>* ysln, double eps, int xitem, int yitem)
-      {
-        if(vec == NULL)
-          vec = new Vectorizer;
         vec->lock_data();
         vec->process_solution(xsln, ysln, xitem, yitem, eps);
-        if (range_auto) { range_min = vec->get_min_value();
-        range_max = vec->get_max_value(); }
+        
+        if(range_auto) 
+        { 
+          range_min = vec->get_min_value();
+          range_max = vec->get_max_value(); 
+        }
         vec->calc_vertices_aabb(&vertices_min_x, &vertices_max_x, &vertices_min_y, &vertices_max_y);
         vec->unlock_data();
 
@@ -99,10 +98,20 @@ namespace Hermes
       static int n_vert(int i) { return (i + 1) % 3; }
       static int p_vert(int i) { return (i + 2) % 3; }
 
+      void VectorView::set_mode(int mode)
+      {
+        this->mode = mode % 3;
+        refresh();
+      }
+       
+      Vectorizer* VectorView::get_vectorizer()
+      {
+        return this->vec;
+      }
 
       void VectorView::plot_arrow(double x, double y, double xval, double yval, double max, double min, double gs)
       {
-        if (mode == 1)
+        if(mode == 1)
           glColor3f(0.0f, 0.0f, 0.0f);
         else
           glColor3f(0.5f, 0.5f, 0.5f);
@@ -110,15 +119,14 @@ namespace Hermes
         // magnitude
         double Real_mag = sqrt(sqr(xval) + sqr(yval));
         double mag = Real_mag;
-        if (Real_mag > max) mag = max;
+        if(Real_mag > max) mag = max;
         double length = mag/max * gs * length_coef;
         double width = 0.1 * gs;
-        if (mode == 1) width *= 1.2;
+        if(mode == 1) width *= 1.2;
         double xnew = x + gs * xval * mag / (max * Real_mag) * length_coef;
         double ynew = y - gs * yval * mag / (max * Real_mag) * length_coef;
 
-
-        if ((mag)/(max - min) < 1e-5)
+        if((mag)/(max - min) < 1e-5)
         {
           glTranslated(x, y, 0.0);
 
@@ -131,7 +139,6 @@ namespace Hermes
         }
         else
         {
-
           glBegin(GL_LINES);
           glVertex2d(x, y);
           glVertex2d(xnew, ynew);
@@ -149,14 +156,13 @@ namespace Hermes
 
         glLoadIdentity();
 
-        if (mode == 1)
+        if(mode == 1)
         {
           float color[3];
           get_palette_color((mag - min)/(max - min), color); //  0.0 -- 1.0
           glColor3f(color[0], color[1], color[2]);
 
-
-          if (mag/(max - min) < 1e-5)
+          if(mag/(max - min) < 1e-5)
           {
             glBegin(GL_QUADS);
             glVertex2d( width,  width);
@@ -167,7 +173,6 @@ namespace Hermes
           }
           else
           {
-
             glBegin(GL_LINES);
             glVertex2d(x, y);
             glVertex2d(xnew, ynew);
@@ -187,7 +192,6 @@ namespace Hermes
         }
       }
 
-
       void VectorView::on_display()
       {
         set_ortho_projection();
@@ -198,7 +202,7 @@ namespace Hermes
 
         // initial grid point and grid step
         double gt = gs;
-        if (hexa) gt *= sqrt(3.0)/2.0;
+        if(hexa) gt *= sqrt(3.0)/2.0;
 
         double max_length = 0.0;
 
@@ -216,21 +220,21 @@ namespace Hermes
 
           // find max length of vectors
           double length = sqr(vert[i][2]) + sqr(vert[i][3]);
-          if (length > max_length) max_length = length;
+          if(length > max_length) max_length = length;
         }
         max_length = sqrt(max_length);
 
         // value range
         double min = range_min, max = range_max;
-        if (range_auto) { min = vec->get_min_value(); max = vec->get_max_value(); }
+        if(range_auto) { min = vec->get_min_value(); max = vec->get_max_value(); }
         double irange = 1.0 / (max - min);
         // special case: constant solution
-        if (fabs(min - max) < 1e-8) { irange = 1.0; min -= 0.5; }
+        if(fabs(min - max) < 1e-8) { irange = 1.0; min -= 0.5; }
 
         // draw all triangles
         int3* xtris = vec->get_triangles();
 
-        if (mode != 1) glEnable(GL_TEXTURE_1D);
+        if(mode != 1) glEnable(GL_TEXTURE_1D);
         glBindTexture(GL_TEXTURE_1D, gl_pallete_tex_id);
         glBegin(GL_TRIANGLES);
         glColor3f(0.95f, 0.95f, 0.95f);
@@ -252,13 +256,13 @@ namespace Hermes
         glDisable(GL_TEXTURE_1D);
 
         // draw all edges
-        /*if (mode == 0) glColor3f(0.3, 0.3, 0.3);
+        /*if(mode == 0) glColor3f(0.3, 0.3, 0.3);
         else*/ glColor3f(0.5, 0.5, 0.5);
         glBegin(GL_LINES);
-        int3* edges = vec->get_edges();
+        int2* edges = vec->get_edges();
         for (i = 0; i < vec->get_num_edges(); i++)
         {
-          if (lines || edges[i][2] != 0)
+          if(lines || edges[i][2] != 0)
           {
             glVertex2d(tvert[edges[i][0]][0], tvert[edges[i][0]][1]);
             glVertex2d(tvert[edges[i][1]][0], tvert[edges[i][1]][1]);
@@ -267,7 +271,7 @@ namespace Hermes
         glEnd();
 
         // draw dashed edges
-        if (lines)
+        if(lines)
         {
           glEnable(GL_LINE_STIPPLE);
           glLineStipple(1, 0xCCCC);
@@ -283,7 +287,7 @@ namespace Hermes
         }
 
         // draw arrows
-        if (mode != 2)
+        if(mode != 2)
         {
           for (i = 0; i < vec->get_num_triangles(); i++)
           {
@@ -293,14 +297,14 @@ namespace Hermes
             double mr, ml, lx, rx, xval, yval;
 
             double wh = output_height + gt, ww = output_width + gs;
-            if ((tvert[xtris[i][0]][0] < -gs) && (tvert[xtris[i][1]][0] < -gs) && (tvert[xtris[i][2]][0] < -gs)) continue;
-            if ((tvert[xtris[i][0]][0] >  ww) && (tvert[xtris[i][1]][0] >  ww) && (tvert[xtris[i][2]][0] >  ww)) continue;
-            if ((tvert[xtris[i][0]][1] < -gt) && (tvert[xtris[i][1]][1] < -gt) && (tvert[xtris[i][2]][1] < -gt)) continue;
-            if ((tvert[xtris[i][0]][1] >  wh) && (tvert[xtris[i][1]][1] >  wh) && (tvert[xtris[i][2]][1] >  wh)) continue;
+            if((tvert[xtris[i][0]][0] < -gs) && (tvert[xtris[i][1]][0] < -gs) && (tvert[xtris[i][2]][0] < -gs)) continue;
+            if((tvert[xtris[i][0]][0] >  ww) && (tvert[xtris[i][1]][0] >  ww) && (tvert[xtris[i][2]][0] >  ww)) continue;
+            if((tvert[xtris[i][0]][1] < -gt) && (tvert[xtris[i][1]][1] < -gt) && (tvert[xtris[i][2]][1] < -gt)) continue;
+            if((tvert[xtris[i][0]][1] >  wh) && (tvert[xtris[i][1]][1] >  wh) && (tvert[xtris[i][2]][1] >  wh)) continue;
 
             // find vertex with min y-coordinate
             for (k = 0; k < 3; k++)
-              if (tvert[xtris[i][k]][1] < miny)
+              if(tvert[xtris[i][k]][1] < miny)
                 miny = tvert[xtris[i][idx = k]][1];
             l1 = r1 = xtris[i][idx];
             l2 = xtris[i][n_vert(idx)];
@@ -322,11 +326,11 @@ namespace Hermes
             bool shift = hexa && (s & 1);
 
             // if there are two points with min y-coordinate, switch to the next segment
-            if ((tvert[l1][1] == tvert[l2][1]) || (tvert[r1][1] == tvert[r2][1]))
+            if((tvert[l1][1] == tvert[l2][1]) || (tvert[r1][1] == tvert[r2][1]))
             {
-              if (tvert[l1][1] == tvert[l2][1])
+              if(tvert[l1][1] == tvert[l2][1])
               {l1 = l2; l2 = r2;}
-              else if (tvert[r1][1] == tvert[r2][1])
+              else if(tvert[r1][1] == tvert[r2][1])
               {r1 = r2; r2 = l2;}
             }
 
@@ -337,7 +341,7 @@ namespace Hermes
             lx = tvert[l1][0] + ml * (lry - (tvert[l1][1]));
             rx = tvert[r1][0] + mr * (lry - (tvert[r1][1]));
 
-            if (lry < -gt)
+            if(lry < -gt)
             {
               k = (int) floor(-lry/gt);
               lry += gt * k;
@@ -352,12 +356,12 @@ namespace Hermes
               while (((lry <= tvert[l2][1]) && (lry <= tvert[r2][1])) && (lry < wh))
               {
                 double gz = gx;
-                if (shift) gz -= 0.5*gs;
+                if(shift) gz -= 0.5*gs;
                 s = (int) ceil((lx - gz)/gs);
                 x = gz + s*gs;
-                if (hexa) shift = !shift;
+                if(hexa) shift = !shift;
 
-                if (x < -gs)
+                if(x < -gs)
                 {
                   k = (int) floor(-x/gs);
                   x += gs * k;
@@ -377,7 +381,7 @@ namespace Hermes
                 lry += gt;
               }
               // change segment
-              if (lry >= tvert[l2][1])
+              if(lry >= tvert[l2][1])
               {
                 l1 = l2; l2 = r2;
                 ml = (tvert[l1][0] - tvert[l2][0])/(tvert[l1][1] - tvert[l2][1]);
@@ -397,17 +401,15 @@ namespace Hermes
         vec->unlock_data();
       }
 
-
       void VectorView::on_mouse_move(int x, int y)
       {
-        if (dragging)
+        if(dragging)
         {
           gx += (x - mouse_x);
           gy += (y - mouse_y);
         }
         View::on_mouse_move(x, y);
       }
-
 
       void VectorView::on_key_down(unsigned char key, int x, int y)
       {
@@ -438,13 +440,13 @@ namespace Hermes
 
         case 'b':
           mode++;
-          if (mode > 2) mode = 0;
+          if(mode > 2) mode = 0;
           refresh();
           break;
 
         case '*':
         case '/':
-          if (key == '*') length_coef *= 1.1; else length_coef /= 1.1;
+          if(key == '*') length_coef *= 1.1; else length_coef /= 1.1;
           refresh();
           break;
 
@@ -453,7 +455,6 @@ namespace Hermes
           break;
         }
       }
-
 
       const char* VectorView::get_help_text() const
       {

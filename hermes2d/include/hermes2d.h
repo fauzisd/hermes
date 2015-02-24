@@ -18,15 +18,19 @@
 #ifndef __HERMES_2D_H
 #define __HERMES_2D_H
 
-#include "hermes2d_common_defs.h"
+#include "global.h"
 
 #include "newton_solver.h"
 #include "picard_solver.h"
+#include "linear_solver.h"
 #include "calculation_continuity.h"
 
 #include "boundary_conditions/essential_boundary_conditions.h"
 
 #include "quadrature/limit_order.h"
+
+#include "api2d.h"
+#include "mixins2d.h"
 
 #include "mesh/mesh.h"
 #include "mesh/mesh_reader.h"
@@ -53,6 +57,7 @@
 
 #include "weakform/weakform.h"
 #include "discrete_problem.h"
+#include "discrete_problem_linear.h"
 #include "forms.h"
 
 #include "integrals/h1.h"
@@ -89,17 +94,22 @@
 #include "adapt/adapt.h"
 #include "adapt/kelly_type_adapt.h"
 #include "neighbor.h"
-#include "ogprojection.h"
-#include "ogprojection_nox.h"
+#include "projections/localprojection.h"
+#include "projections/ogprojection.h"
+#include "projections/ogprojection_nox.h"
 
 #include "runge_kutta.h"
 #include "spline.h"
 
+#if defined (AGROS)
+// No inclusions here.
+#else
 #include "weakform_library/weakforms_elasticity.h"
 #include "weakform_library/weakforms_h1.h"
 #include "weakform_library/weakforms_hcurl.h"
 #include "weakform_library/weakforms_maxwell.h"
 #include "weakform_library/weakforms_neutronics.h"
+#endif
 
 #include "doxygen_first_page.h"
 #endif

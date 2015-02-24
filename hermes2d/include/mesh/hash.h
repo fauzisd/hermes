@@ -38,27 +38,30 @@ namespace Hermes
     /// HashTable is a base class for Mesh. It serves as a container for all nodes
     /// of a mesh. Moreover, it has node searching functions based on hash tables.
     ///
-    class HERMES_API HashTable
+    class HERMES_API HashTable : public Hermes::Mixins::Loggable
     {
-    protected:
-
-      HashTable();
-      ~HashTable();
-
+    public:
       /// Retrieves a node by its id number.
       Node* get_node(int id) const;
-
-      /// Returns the total number of nodes stored.
-      int get_num_nodes() const;
 
       /// Returns the maximum node id number plus one.
       int get_max_node_id() const;
 
+      static const int H2D_DEFAULT_HASH_SIZE = 0x8000; // 32K entries
+
+
+    protected:
+      HashTable();
+      virtual ~HashTable();
+
+      /// Returns the total number of nodes stored.
+      int get_num_nodes() const;
+
       /// Returns a vertex node with parent id's p1 and p2 if it exists, NULL otherwise.
-      Node* peek_vertex_node(int p1, int p2);
+      Node* peek_vertex_node(int p1, int p2) const;
 
       /// Returns an edge node with parent id's p1 and p2 if it exists, NULL otherwise.
-      Node* peek_edge_node(int p1, int p2);
+      Node* peek_edge_node(int p1, int p2) const;
 
       /// Central function: obtains a vertex node pointer given the id
       /// numbers of its parents. If the vertex node does not exist, it is
@@ -70,12 +73,10 @@ namespace Hermes
       /// created first.
       Node* get_edge_node(int p1, int p2);
 
-      static const int H2D_DEFAULT_HASH_SIZE = 0x8000; // 32K entries
-
       Array<Node> nodes; ///< Array storing all nodes
 
       /// Initializes the hash table.
-      /// \param size [in] Hash table size; must be a power of two.
+      /// \param size[in] Hash table size; must be a power of two.
       void init(int size = H2D_DEFAULT_HASH_SIZE);
 
       /// Copies another hash table contents
@@ -87,15 +88,11 @@ namespace Hermes
       /// Frees all memory used by the instance.
       void free();
 
-      /// Prints hash table statistics for debugging purposes.
-      void dump_hash_stat();
-
       /// Removes a vertex node with parent id's p1 and p2.
       void remove_vertex_node(int id);
 
       /// Removes an edge node with parent id's p1 and p2.
       void remove_edge_node(int id);
-
 
       // Internal members
     private:
@@ -104,13 +101,12 @@ namespace Hermes
       Node** e_table; ///< Edge node hash table
 
       int mask;
-      int nqueries, ncollisions;
 
-      int hash(int p1, int p2) { return (984120265*p1 + 125965121*p2) & mask; }
+      inline int hash(int p1, int p2) const { return (984120265*p1 + 125965121*p2) & mask; }
 
       /// Searches a list of hash synonyms given the first list item.
       /// Returns the node matching the parent ids p1 and p2.
-      Node* search_list(Node* node, int p1, int p2);
+      Node* search_list(Node* node, int p1, int p2) const;
 
       /// Creates a copy of a hash synonym list.
       void copy_list(Node** ptr, Node* node);

@@ -38,67 +38,84 @@ namespace Hermes
       class Orderizer;
       class OrderView;
     };
+    class Shapeset;
+
+    template<typename Scalar> class L2Space;
+    template<typename Scalar> class H1Space;
+    template<typename Scalar> class HcurlSpace;
+    template<typename Scalar> class HdivSpace;
+
+    /** @defgroup spaces FEM Spaces
+      * \brief Collection of classes that represent and specify FE spaces.
+    */
+
+    /// @ingroup spaces
     /// \brief Represents a finite element space over a domain.
     ///
     /// The Space class represents a finite element space over a domain defined by 'mesh', spanned
     /// by basis functions constructed using 'shapeset'. It serves as a base class for H1Space,
-    /// HcurlSpace, HhivSpace and L2Space, since most of the functionality is common for all these spaces.
+    /// HcurlSpace, HdivSpace and L2Space, since most of the functionality is common for all these spaces.
     ///
     /// There are four main functions the Space class provides:
     /// <ol>
-    ///    <li> It handles the Dirichlet (essential) boundary conditions. The user provides a pointer
-    ///         to an instance of the EssentialBCs class that determines
-    ///         which markers represent the Dirichlet part of the boundary, and which markers represent
-    ///         the Neumann and Newton parts. It is also possible to use the value BC_NONE
-    ///         which supresses all BC processing on such part of the boundary.
+    ///&nbsp; <li> It handles the Dirichlet (essential) boundary conditions. The user provides a pointer
+    ///&nbsp;      to an instance of the EssentialBCs class that determines
+    ///&nbsp;      which markers represent the Dirichlet part of the boundary, and which markers represent
+    ///&nbsp;      the Neumann and Newton parts (all other than those with an Essential BC specified on them).
+    ///&nbsp;      Handling of these conditions is done naturally - through weak formulation.
     ///
-    ///         The default BC type is BC_NATURAL for the whole boundary. The default BC value is zero for all
-    ///         markers.
+    ///&nbsp; <li> It stores element polynomial degrees, or 'orders'. All active elements need to have
+    ///&nbsp;      an order set for the Space to be valid. Individual orders can be set by calling
+    ///&nbsp;      set_element_order(). You can also set the same order for all elements using
+    ///&nbsp;      set_uniform_order(). Quadrilateral elements can have different orders in the vertical
+    ///&nbsp;      and horizontal directions. It is therefore necessary to form the order using the macro
+    ///&nbsp;      H2D_MAKE_QUAD_ORDER() when calling the aforementioned functions.
     ///
-    ///    <li> It stores element polynomial degrees, or 'orders'. All active elements need to have
-    ///         an order set for the Space to be valid. Individual orders can be set by calling
-    ///         set_element_order(). You can also set the same order for all elements using
-    ///         set_uniform_order(). Quadrilateral elements can have different orders in the vertical
-    ///         and horizontal directions. It is therefore necessary to form the order using the macro
-    ///         H2D_MAKE_QUAD_ORDER() when calling the aforementioned functions.
+    ///&nbsp; <li> It builds and enumerates the basis functions. After all element orders have been set,
+    ///&nbsp;      you must call the function assign_dofs(). This function assigns the DOF (degree-of-
+    ///&nbsp;      freedom) numbers to basis functions, starting with 'first_dof' (optional parameter).
+    ///&nbsp;      It also determines constraining relationships in the mesh due to hanging nodes and
+    ///&nbsp;      builds constrained basis functions. The total number of basis functions can then
+    ///&nbsp;      be obtained by calling  (). Standard basis functions are assigned positive
+    ///&nbsp;      numbers from 'first_dof' to ('first_dof' + (get_num_dofs() - 1) * 'stride'). All
+    ///&nbsp;      shape functions belonging to the Dirichlet lift are assigned DOF number of -1. This
+    ///&nbsp;      way the Dirichlet lift becomes a (virtual) basis function. This simplifies assembling.
     ///
-    ///    <li> It builds and enumerates the basis functions. After all element orders have been set,
-    ///         you must call the function assign_dofs(). This function assigns the DOF (degree-of-
-    ///         freedom) numbers to basis functions, starting with 'first_dof' (optional parameter).
-    ///         It also determines constraining relationships in the mesh due to hanging nodes and
-    ///         builds constrained basis functions. The total number of basis functions can then
-    ///         be obtained by calling  (). Standard basis functions are assigned positive
-    ///         numbers from 'first_dof' to ('first_dof' + (get_num_dofs() - 1) * 'stride'). All
-    ///         shape functions belonging to the Dirichlet lift are assigned DOF number of -1. This
-    ///         way the Dirichlet lift becomes a (virtual) basis function. This simplifies assembling.
-    ///
-    ///    <li> Finally, and most importantly, the Space is able to deliver a list of shape functions
-    ///         existing on each element. Such a list is called an "assembly list" and is represented
-    ///         by the class AsmList<Scalar>. The assembly list contains the triplets (idx, dof, coef).
-    ///         'idx' is the shape function index, as understood by the Shapeset. 'dof' is the number
-    ///         of the basis function, whose part the shape function forms. 'coef' is a Real constant,
-    ///         with which the shape function must be multiplied in order to fit into the basis
-    ///         function. This is typically 1, but can be less than that for constrained functions.
-    ///         Constrained vertex functions can belong to more than one basis functions. This
-    ///         results in more triplets with the same 'idx'. However, the assembling procedure or
-    ///         the Solution class do not have to worry about that. For instance, the Solution class
-    ///         simply obtains the values of all shape functions contained in the list, multiplies them
-    ///         by 'coef', and forms a linear combination of them by taking the solution vector values
-    ///         at the 'dof' positions. This way the solution to the PDE is obtained.
+    ///&nbsp; <li> Finally, and most importantly, the Space is able to deliver a list of shape functions
+    ///&nbsp;      existing on each element. Such a list is called an "assembly list" and is represented
+    ///&nbsp;      by the class AsmList<Scalar>. The assembly list contains the triplets (idx, dof, coef).
+    ///&nbsp;      'idx' is the shape function index, as understood by the Shapeset. 'dof' is the number
+    ///&nbsp;      of the basis function, whose part the shape function forms. 'coef' is a Real constant,
+    ///&nbsp;      with which the shape function must be multiplied in order to fit into the basis
+    ///&nbsp;      function. This is typically 1, but can be less than that for constrained functions.
+    ///&nbsp;      Constrained vertex functions can belong to more than one basis functions. This
+    ///&nbsp;      results in more triplets with the same 'idx'. However, the assembling procedure or
+    ///&nbsp;      the Solution class do not have to worry about that. For instance, the Solution class
+    ///&nbsp;      simply obtains the values of all shape functions contained in the list, multiplies them
+    ///&nbsp;      by 'coef', and forms a linear combination of them by taking the solution vector values
+    ///&nbsp;      at the 'dof' positions. This way the solution to the PDE is obtained.
     /// </ol>
     ///
     /// Space is an abstract class and cannot be instatiated. Use one of the specializations H1Space,
     /// HcurlSpace or L2Space instead.
+    /// <br>
+    /// The handling of irregular meshes is desribed in H1Space and HcurlSpace.<br>
     ///
-    /// The handling of irregular meshes is desribed in H1Space and HcurlSpace.
-    ///
-
     template<typename Scalar>
-    class HERMES_API Space
+    class HERMES_API Space : public Hermes::Mixins::Loggable, public Hermes::Hermes2D::Mixins::StateQueryable, public Hermes::Hermes2D::Mixins::XMLParsing
     {
     public:
-      Space(Mesh* mesh, Shapeset* shapeset, EssentialBCs<Scalar>* essential_bcs, Ord2 p_init);
+      Space();
+      Space(const Mesh* mesh, Shapeset* shapeset, EssentialBCs<Scalar>* essential_bcs);
 
+      /// Common code for constructors.
+      void init();
+
+      /// State querying helpers.
+      virtual bool isOkay() const;
+      inline std::string getClassName() const { return "Space"; }
+
+      /// Destructor.
       virtual ~Space();
 
       /// Sets element polynomial order. Can be called by the user. Should not be called
@@ -132,27 +149,28 @@ namespace Hermes
       /// Sets the shapeset.
       virtual void set_shapeset(Shapeset* shapeset) = 0;
 
-      /// Copies element orders from another space. 'inc' is an optional order
-      /// increase. If the source space has a coarser mesh, the orders are distributed
-      /// recursively. This is useful for reference solution spaces.
-      void copy_orders(const Space<Scalar>* space, int inc = 0);
-
       /// \brief Returns the number of basis functions contained in the space.
-      int get_num_dofs();
+      int get_num_dofs() const;
 
       /// \brief Returns the number of basis functions contained in the spaces.
+      static int get_num_dofs(Hermes::vector<const Space<Scalar>*> spaces);
       static int get_num_dofs(Hermes::vector<Space<Scalar>*> spaces);
-      
+
       /// \brief Returns the number of basis functions contained in the space.
+      static int get_num_dofs(const Space<Scalar>* space);
       static int get_num_dofs(Space<Scalar>* space);
 
       Mesh* get_mesh() const;
 
+      /// \brief Sets a (new) mesh and calls assign_dofs().
       void set_mesh(Mesh* mesh);
-      
+
+      /// \brief Sets a (new) mesh seq, and mesh_seq.
+      void set_mesh_seq(int seq);
+
       /// Sets the boundary condition.
       void set_essential_bcs(EssentialBCs<Scalar>* essential_bcs);
-      
+
       /// Obtains an boundary conditions
       EssentialBCs<Scalar>* get_essential_bcs() const;
 
@@ -160,13 +178,53 @@ namespace Hermes
       /// essnetial boundary conditions.
       void update_essential_bc_values();
 
-      virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order) = 0;
-      
-      /// Obtains an assembly list for the given element.
-      virtual void get_element_assembly_list(Element* e, AsmList<Scalar>* al);
+      Shapeset* get_shapeset() const;
 
-      Shapeset* get_shapeset();
-      
+      /// Saves this space into a file.
+      bool save(const char *filename) const;
+
+      /// Loads a space from a file.
+      static Space<Scalar>* load(const char *filename, Mesh* mesh, bool validate, EssentialBCs<Scalar>* essential_bcs = NULL, Shapeset* shapeset = NULL);
+
+      /// Obtains an assembly list for the given element.
+      virtual void get_element_assembly_list(Element* e, AsmList<Scalar>* al, unsigned int first_dof = 0) const;
+
+      /// Copy from Space instance 'space'
+      virtual void copy(const Space<Scalar>* space, Mesh* new_mesh);
+
+      /// Class for creating reference space.
+      class HERMES_API ReferenceSpaceCreator
+      {
+      public:
+        /// Constructor.
+        /// \param[in] coarse_space The coarse (original) space.
+        /// \param[in] ref_mesh The refined mesh.
+        /// \param[in] order_increase Increase of the polynomial order.
+        ReferenceSpaceCreator(const Space<Scalar>* coarse_space, const Mesh* ref_mesh, unsigned int order_increase = 1);
+
+        /// Method that does the creation.
+        /// THIS IS THE METHOD TO OVERLOAD FOR CUSTOM CREATING OF A REFERENCE SPACE.
+        virtual void handle_orders(Space<Scalar>* ref_space);
+
+        /// Methods that user calls to get the reference space pointer (has to be properly casted if necessary).
+        virtual Space<Scalar>* create_ref_space(bool assign_dofs = true);
+
+        /// Construction initialization.
+      private:
+        L2Space<Scalar>* init_construction_l2();
+        H1Space<Scalar>* init_construction_h1();
+        HcurlSpace<Scalar>* init_construction_hcurl();
+        HdivSpace<Scalar>* init_construction_hdiv();
+
+        /// Construction finalization.
+        virtual void finish_construction(Space<Scalar>* ref_space);
+
+        /// Storage.
+        const Space<Scalar>* coarse_space;
+        const Mesh* ref_mesh;
+        unsigned int order_increase;
+      };
+
       /// Sets element polynomial order. This version does not call assign_dofs() and is
       /// intended primarily for internal use.
       virtual void set_element_order_internal(int id, int order);
@@ -174,42 +232,56 @@ namespace Hermes
       /// \brief Builds basis functions and assigns DOF numbers to them.
       /// \details This functions must be called \b after assigning element orders, and \b before
       /// using the space in a computation, otherwise an error will occur.
-      /// \param first_dof [in] The DOF number of the first basis function.
-      /// \param stride [in] The difference between the DOF numbers of successive basis functions.
+      /// \param first_dof[in] The DOF number of the first basis function.
+      /// \param stride[in] The difference between the DOF numbers of successive basis functions.
       /// \return The number of basis functions contained in the space.
       virtual int assign_dofs(int first_dof = 0, int stride = 1);
-      
+
       /// \brief Assings the degrees of freedom to all Spaces in the Hermes::vector.
       static int assign_dofs(Hermes::vector<Space<Scalar>*> spaces);
 
-    protected:
+      virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order, EssentialBoundaryCondition<Scalar> *bc) = 0;
+
+      static void update_essential_bc_values(Hermes::vector<Space<Scalar>*> spaces, double time);
+
+      static void update_essential_bc_values(Space<Scalar>*s, double time);
+
+      /// Internal. Return type of this space (H1 = HERMES_H1_SPACE, Hcurl = HERMES_HCURL_SPACE,
+      /// Hdiv = HERMES_HDIV_SPACE, L2 = HERMES_L2_SPACE)
+      virtual SpaceType get_type() const = 0;
+
       static Node* get_mid_edge_vertex_node(Element* e, int i, int j);
 
       /// Sets polynomial orders to elements created by Mesh::regularize() using "parents".
       void distribute_orders(Mesh* mesh, int* parents);
 
       /// Internal. Obtains the order of an edge, according to the minimum rule.
-      virtual int get_edge_order(Element* e, int edge);
+      virtual int get_edge_order(Element* e, int edge) const;
 
       /// \brief Returns the DOF number of the last basis function.
       int get_max_dof() const;
-      
-      /// Creates a copy of the space, increases order of all elements by
-      /// "order_increase".
-      virtual Space<Scalar>* dup(Mesh* mesh, int order_increase = 0) const = 0;
 
       /// Returns true if the space is ready for computation, false otherwise.
       bool is_up_to_date() const;
-      
+
       /// Obtains an edge assembly list (contains shape functions that are nonzero on the specified edge).
-      void get_boundary_assembly_list(Element* e, int surf_num, AsmList<Scalar>* al);
+      void get_boundary_assembly_list(Element* e, int surf_num, AsmList<Scalar>* al, unsigned int first_dof = 0) const;
 
       /// Sets the same polynomial order for all elements in the mesh. Does not
       /// call assign_dofs(). For internal use.
-      void set_uniform_order_internal(Ord2 order, int marker);
+      void set_uniform_order_internal(int order, int marker);
 
-      virtual void free();
+      void free();
 
+      /// Returns the total (global) number of vertex functions.
+      /// The DOF ordering starts with vertex functions, so it it necessary to know how many of them there are.
+      int get_vertex_functions_count();
+      /// Returns the total (global) number of edge functions.
+      int get_edge_functions_count();
+      /// Returns the total (global) number of bubble functions.
+      int get_bubble_functions_count();
+
+    protected:
       /// Number of degrees of freedom (dimension of the space).
       int ndof;
 
@@ -224,13 +296,14 @@ namespace Hermes
       EssentialBCs<Scalar>* essential_bcs;
 
       /// FE mesh.
-      Mesh* mesh;
+      const Mesh* mesh;
 
       int default_tri_order, default_quad_order;
+      int vertex_functions_count, edge_functions_count, bubble_functions_count;
       int first_dof, next_dof;
       int stride;
       int seq, mesh_seq;
-      bool was_assigned;
+      int was_assigned;
 
       struct BaseComponent
       {
@@ -277,7 +350,7 @@ namespace Hermes
       int nsize, ndata_allocated; ///< number of items in ndata, allocated space
       int esize;
 
-      virtual int get_edge_order_internal(Node* en);
+      virtual int get_edge_order_internal(Node* en) const;
 
       /// \brief Updates internal node and element tables.
       /// \details Since meshes only contain geometric information, the Space class keeps two
@@ -288,16 +361,16 @@ namespace Hermes
       /// enough to contain all node and element id's, and to reallocate them if not.
       virtual void resize_tables();
 
-      void copy_orders_recurrent(Element* e, int order);
+      void update_orders_recurrent(Element* e, int order);
 
       virtual void reset_dof_assignment(); ///< Resets assignment of DOF to an unassigned state.
       virtual void assign_vertex_dofs() = 0;
       virtual void assign_edge_dofs() = 0;
       virtual void assign_bubble_dofs() = 0;
 
-      virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al) = 0;
-      virtual void get_boundary_assembly_list_internal(Element* e, int surf_num, AsmList<Scalar>* al) = 0;
-      virtual void get_bubble_assembly_list(Element* e, AsmList<Scalar>* al);
+      virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al) const = 0;
+      virtual void get_boundary_assembly_list_internal(Element* e, int surf_num, AsmList<Scalar>* al) const = 0;
+      virtual void get_bubble_assembly_list(Element* e, AsmList<Scalar>* al) const;
 
       double** proj_mat;
       double*  chol_p;
@@ -321,36 +394,12 @@ namespace Hermes
 
       /// Internal. Used by DiscreteProblem to detect changes in the space.
       int get_seq() const;
-
-    public:
-      /// Internal. Return type of this space (H1 = HERMES_H1_SPACE, Hcurl = HERMES_HCURL_SPACE,
-      /// Hdiv = HERMES_HDIV_SPACE, L2 = HERMES_L2_SPACE)
-      virtual SpaceType get_type() const = 0;
-
-      /// Create globally refined space.
-      static Hermes::vector<Space<Scalar>*>* construct_refined_spaces(Hermes::vector<Space<Scalar>*> coarse,
-                                                                      int order_increase = 1,
-                                                                      int refinement_type = 0);
-
-      static Space<Scalar>* construct_refined_space(Space<Scalar>* coarse, int order_increase = 1,
-                                                    int refinement_type = 0);
-
-      static void update_essential_bc_values(Hermes::vector<Space<Scalar>*> spaces, double time);
-
-      static void update_essential_bc_values(Space<Scalar>*s, double time);
-
-      friend class Adapt<Scalar>;
-      friend class DiscreteProblem<Scalar>;
-      template<typename T> friend class Continuity;
-
-      /// Saves this space into a file.
-      bool save(const char *filename) const;
-
-      /// Loads a space from a file.
-      void load(const char *filename, EssentialBCs<Scalar>* essential_bcs = NULL);
-
       template<typename T> friend class OGProjection;
+      template<typename T> friend class NewtonSolver;
+      template<typename T> friend class PicardSolver;
+      template<typename T> friend class LinearSolver;
       template<typename T> friend class OGProjectionNOX;
+      template<typename T> friend class LocalProjection;
       template<typename T> friend class Solution;
       template<typename T> friend class RungeKutta;
       template<typename T> friend class ExactSolution;
@@ -361,6 +410,9 @@ namespace Hermes
       friend class Views::Orderizer;
       friend class Views::OrderView;
       template<typename T> friend class Views::VectorBaseView;
+      friend class Adapt<Scalar>;
+      friend class DiscreteProblem<Scalar>;
+      template<typename T> friend class CalculationContinuity;
     };
   }
 }

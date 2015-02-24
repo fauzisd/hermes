@@ -20,7 +20,7 @@
     \brief File containing includes of all HermesCommon functionality + solvers. Intended to be included.
 */
 #include "common.h"
-#include "solvers/linear_solver.h"
+#include "solvers/linear_matrix_solver.h"
 #include "solvers/nonlinear_solver.h"
 #include "solvers/amesos_solver.h"
 #include "solvers/aztecoo_solver.h"
@@ -34,3 +34,13 @@
 #include "solvers/precond_ifpack.h"
 #include "solvers/precond_ml.h"
 #include "solvers/eigensolver.h"
+#include "hermes_function.h"
+#include "compat.h"
+#include "callstack.h"
+#include "vector.h"
+#include "tables.h"
+#include "array.h"
+#include "qsort.h"
+#include "ord.h"
+#include "mixins.h"
+#include "api.h"

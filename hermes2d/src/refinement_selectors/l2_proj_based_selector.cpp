@@ -1,4 +1,4 @@
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "matrix.h"
 #include "solution.h"
 #include "shapeset/shapeset_l2_all.h"
@@ -10,22 +10,41 @@ namespace Hermes
   {
     namespace RefinementSelectors
     {
-
-      template<typename Scalar>
-      L2Shapeset L2ProjBasedSelector<Scalar>::default_shapeset;
-
       template<typename Scalar>
       const int L2ProjBasedSelector<Scalar>::H2DRS_MAX_L2_ORDER = H2DRS_MAX_ORDER;
 
       template<typename Scalar>
       L2ProjBasedSelector<Scalar>::L2ProjBasedSelector(CandList cand_list, double conv_exp, int max_order, L2Shapeset* user_shapeset)
-        : ProjBasedSelector<Scalar>(cand_list, conv_exp, max_order, user_shapeset == NULL ? &default_shapeset : user_shapeset, typename OptimumSelector<Scalar>::Range(1, 1), typename OptimumSelector<Scalar>::Range(0, H2DRS_MAX_L2_ORDER)) {}
+        : ProjBasedSelector<Scalar>(cand_list, conv_exp, max_order, user_shapeset == NULL ? new L2Shapeset() : user_shapeset, typename OptimumSelector<Scalar>::Range(1, 1), typename OptimumSelector<Scalar>::Range(0, H2DRS_MAX_L2_ORDER)), user_shapeset(user_shapeset == NULL ? false : true)
+      {
+        if(user_shapeset != NULL)
+        {
+          this->warn("Warning: The user shapeset provided for the selector has to have a correct copy constructor implemented.");
+          this->warn("Warning: The functionality for cloning user shapeset is to be implemented yet.");
+        }
+      }
+
+      template<typename Scalar>
+      L2ProjBasedSelector<Scalar>::~L2ProjBasedSelector()
+      {
+        if(!this->user_shapeset)
+          delete this->shapeset;
+      }
+
+      template<typename Scalar>
+      Selector<Scalar>* L2ProjBasedSelector<Scalar>::clone()
+      {
+        L2ProjBasedSelector<Scalar>* newSelector = new L2ProjBasedSelector(this->cand_list, this->conv_exp, this->max_order, (L2Shapeset*)this->shapeset);
+        newSelector->set_error_weights(this->error_weight_h, this->error_weight_p, this->error_weight_aniso);
+        newSelector->isAClone = true;
+        return newSelector;
+      }
 
       template<typename Scalar>
       void L2ProjBasedSelector<Scalar>::set_current_order_range(Element* element)
       {
         this->current_max_order = this->max_order;
-        if (this->current_max_order == H2DRS_DEFAULT_ORDER)
+        if(this->current_max_order == H2DRS_DEFAULT_ORDER)
           this->current_max_order = (20 - element->iro_cache)/2 - 2; // default
         else
           this->current_max_order = std::min(this->current_max_order, (20 - element->iro_cache)/2 - 2); // user specified
@@ -33,7 +52,7 @@ namespace Hermes
       }
 
       template<typename Scalar>
-      void L2ProjBasedSelector<Scalar>::precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals)
+      void L2ProjBasedSelector<Scalar>::precalc_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals, ElementMode2D mode)
       {
         //for all transformations
         bool done = false;
@@ -65,21 +84,22 @@ namespace Hermes
               double ref_y = gip_points[k][H2D_GIP2D_Y] * trf.m[1] + trf.t[1];
 
               //for all expansions: retrieve values
-              shape_exp[H2D_L2FE_VALUE][k] = this->shapeset->get_fn_value(inx_shape, ref_x, ref_y, 0);
+              shape_exp[H2D_L2FE_VALUE][k] = this->shapeset->get_fn_value(inx_shape, ref_x, ref_y, 0, mode);
             }
           }
 
           //move to the next transformation
-          if (inx_trf == H2D_TRF_IDENTITY)
+          if(inx_trf == H2D_TRF_IDENTITY)
             done = true;
           else
           {
             inx_trf++;
-            if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+            if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
               inx_trf = H2D_TRF_IDENTITY;
           }
         }
-        error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+        if(!done)
+          throw Exceptions::Exception("All transformation processed but identity transformation not found.");
       }
 
       template<typename Scalar>
@@ -92,7 +112,7 @@ namespace Hermes
 
         //clear list of candidates
         this->candidates.clear();
-        if (this->candidates.capacity() < H2DRS_ASSUMED_MAX_CANDS)
+        if(this->candidates.capacity() < H2DRS_ASSUMED_MAX_CANDS)
           this->candidates.reserve(H2DRS_ASSUMED_MAX_CANDS);
 
         //generate all P-candidates (start from intention of generating all possible candidates
@@ -128,7 +148,7 @@ namespace Hermes
         this->append_candidates_split(start_quad_order, last_quad_order, H2D_REFINEMENT_H, tri || iso_p);
 
         //generate all ANISO-candidates
-        if (!tri && e->iro_cache < 8 /** \todo Find and why is iro_cache compared with the number 8. What does the number 8 mean? */
+        if(!tri && e->iro_cache < 8 /** \todo Find and why is iro_cache compared with the number 8. What does the number 8 mean? */
           && (this->cand_list == H2D_H_ANISO || this->cand_list == H2D_HP_ANISO_H || this->cand_list == H2D_HP_ANISO))
         {
           iso_p = false;
@@ -144,7 +164,7 @@ namespace Hermes
             break; //only one candidate will be created
           case H2D_HP_ANISO_H: iso_p = true; break; //iso change of orders
           }
-          if (iso_p) { //make orders uniform: take mininmum order since nonuniformity is caused by different handling of orders along directions
+          if(iso_p) { //make orders uniform: take mininmum order since nonuniformity is caused by different handling of orders along directions
             int order = std::min(H2D_GET_H_ORDER(start_quad_order_hz), H2D_GET_V_ORDER(start_quad_order_hz));
             start_quad_order_hz = H2D_MAKE_QUAD_ORDER(order, order);
             order = std::min(H2D_GET_H_ORDER(start_quad_order_vt), H2D_GET_V_ORDER(start_quad_order_vt));
@@ -161,10 +181,10 @@ namespace Hermes
       }
 
       template<typename Scalar>
-      void L2ProjBasedSelector<Scalar>::precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals)
+      void L2ProjBasedSelector<Scalar>::precalc_ortho_shapes(const double3* gip_points, const int num_gip_points, const Trf* trfs, const int num_noni_trfs, const Hermes::vector<typename OptimumSelector<Scalar>::ShapeInx>& shapes, const int max_shape_inx, typename ProjBasedSelector<Scalar>::TrfShape& svals, ElementMode2D mode)
       {
         //calculate values
-        precalc_shapes(gip_points, num_gip_points, trfs, num_noni_trfs, shapes, max_shape_inx, svals);
+        precalc_shapes(gip_points, num_gip_points, trfs, num_noni_trfs, shapes, max_shape_inx, svals, mode);
 
         //calculate orthonormal basis
         const int num_shapes = (int)shapes.size();
@@ -198,16 +218,18 @@ namespace Hermes
               }
 
               //move to the next transformation
-              if (inx_trf == H2D_TRF_IDENTITY)
+              if(inx_trf == H2D_TRF_IDENTITY)
                 done = true;
               else
               {
                 inx_trf++;
-                if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+                if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
                   inx_trf = H2D_TRF_IDENTITY;
               }
             }
-            error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+            //identity transformation has to be the last transformation
+            if(!done)
+              throw Exceptions::Exception("All transformation processed but identity transformation not found.");
           }
 
           //normalize
@@ -220,7 +242,8 @@ namespace Hermes
             norm_squared += gip_points[k][H2D_GIP2D_W] * sum;
           }
           double norm = sqrt(norm_squared);
-          assert_msg(finite(1/norm), "Norm (%g) is almost zero.", norm);
+          if(!finite(1/norm))
+            throw Exceptions::Exception("Norm (%g) is almost zero.", norm);
 
           //for all transformations: normalize
           int inx_trf = 0;
@@ -234,26 +257,24 @@ namespace Hermes
             }
 
             //move to the next transformation
-            if (inx_trf == H2D_TRF_IDENTITY)
+            if(inx_trf == H2D_TRF_IDENTITY)
               done = true;
             else
             {
               inx_trf++;
-              if (inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
+              if(inx_trf >= num_noni_trfs) //if all transformations were processed, move to the identity transformation
                 inx_trf = H2D_TRF_IDENTITY;
             }
           }
-          error_if(!done, "All transformation processed but identity transformation not found."); //identity transformation has to be the last transformation
+          //identity transformation has to be the last transformation
+          if(!done)
+            throw Exceptions::Exception("All transformation processed but identity transformation not found.");
         }
       }
 
       template<typename Scalar>
       Scalar** L2ProjBasedSelector<Scalar>::precalc_ref_solution(int inx_son, Solution<Scalar>* rsln, Element* element, int intr_gip_order)
       {
-        //set element and integration order
-        rsln->set_active_element(element);
-        rsln->set_quad_order(intr_gip_order);
-
         //fill with values
         Scalar** rvals_son = precalc_rvals[inx_son];
         rvals_son[H2D_L2FE_VALUE] = rsln->get_fn_values(0);
@@ -263,7 +284,7 @@ namespace Hermes
 
       template<typename Scalar>
       double** L2ProjBasedSelector<Scalar>::build_projection_matrix(double3* gip_points, int num_gip_points,
-        const int* shape_inx, const int num_shapes)
+        const int* shape_inx, const int num_shapes, ElementMode2D mode)
       {
         //allocate
         double** matrix = new_matrix<double>(num_shapes, num_shapes);
@@ -282,8 +303,8 @@ namespace Hermes
             for(int j = 0; j < num_gip_points; j++)
             {
               double gip_x = gip_points[j][H2D_GIP2D_X], gip_y = gip_points[j][H2D_GIP2D_Y];
-              double value0 = this->shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 0);
-              double value1 = this->shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 0);
+              double value0 = this->shapeset->get_value(H2D_FEI_VALUE, shape0_inx, gip_x, gip_y, 0, mode);
+              double value1 = this->shapeset->get_value(H2D_FEI_VALUE, shape1_inx, gip_x, gip_y, 0, mode);
 
               value += gip_points[j][H2D_GIP2D_W] * (value0*value1);
             }

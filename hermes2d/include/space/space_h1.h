@@ -21,86 +21,90 @@
 
 namespace Hermes
 {
-  namespace Hermes2D
-  {
-    /// H1Space represents a space of continuous Scalar functions over a domain (mesh).
-    template<typename Scalar>
-    class HERMES_API H1Space : public Space<Scalar>
-    {
-    public:
-      H1Space(Mesh* mesh, EssentialBCs<Scalar>* boundary_conditions, int p_init = 1,
-        Shapeset* shapeset = NULL);
+	namespace Hermes2D
+	{
+		/// @ingroup spaces
+		/// H1Space represents a space of continuous Scalar functions over a domain (mesh).<br>
+    /// Typical usage:<br>
+    /// ...<br>
+    /// Hermes::Hermes2D::EssentialBCs<double> bcs(&bc_essential1, &bc_essential2, ...);<br>
+    /// <br>
+    /// // Initialize space.<br>
+    /// int globalPolynomialOrder = 4;<br>
+    /// Hermes::Hermes2D::H1Space<double> space(&mesh, &bcs, globalPolynomialOrder);<br>
+		template<typename Scalar>
+		class HERMES_API H1Space : public Space<Scalar>
+		{
+		public:
+			H1Space();
+			H1Space(const Mesh* mesh, EssentialBCs<Scalar>* boundary_conditions, int p_init = 1,
+				Shapeset* shapeset = NULL);
 
-      H1Space(Mesh* mesh, int p_init = 1,
-        Shapeset* shapeset = NULL);
+			H1Space(const Mesh* mesh, int p_init = 1,
+				Shapeset* shapeset = NULL);
 
-      virtual ~H1Space();
+			virtual ~H1Space();
 
-      virtual void set_shapeset(Shapeset* shapeset);
+			virtual void set_shapeset(Shapeset* shapeset);
 
-      /// Removes the degree of freedom from a vertex node with the given id (i.e., its number
-      /// in the mesh file) and makes it part of the Dirichlet lift with the given value.
-      /// This is a special-purpose function which normally should not be needed.
-      /// It is intended for fixing the solution of a system which would otherwise be singular
-      /// and for some reason a standard Dirichlet condition (with non-zero measure on the
-      /// boundary) is not suitable.
-      void fix_vertex(int id, Scalar value = 0.0);
+			/// Removes the degree of freedom from a vertex node with the given id (i.e., its number
+			/// in the mesh file) and makes it part of the Dirichlet lift with the given value.
+			/// This is a special-purpose function which normally should not be needed.
+			/// It is intended for fixing the solution of a system which would otherwise be singular
+			/// and for some reason a standard Dirichlet condition (with non-zero measure on the
+			/// boundary) is not suitable.
+			void fix_vertex(int id, Scalar value = 0.0);
 
-      virtual Space<Scalar>* dup(Mesh* mesh, int order_increase = 0) const;
+			virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order, EssentialBoundaryCondition<Scalar> *bc);
 
-      void load(const char *filename, Mesh* mesh, EssentialBCs<Scalar>* essential_bcs, Shapeset* shapeset = NULL);
+			/// Copy from Space instance 'space'
+			virtual void copy(const Space<Scalar>* space, Mesh* new_mesh);
 
-      void load(const char *filename, Mesh* mesh, Shapeset* shapeset = NULL);
+		protected:
 
-      virtual Scalar* get_bc_projection(SurfPos* surf_pos, int order);
-    protected:
-      
-      virtual SpaceType get_type() const { return HERMES_H1_SPACE; }
+			virtual SpaceType get_type() const { return HERMES_H1_SPACE; }
 
-      /// Common code for the constructors.
-      void init(Shapeset* shapeset, Ord2 p_init);
+			/// Common code for the constructors.
+			void init(Shapeset* shapeset, int p_init);
 
-      virtual void assign_vertex_dofs();
-      virtual void assign_edge_dofs() {};
-      virtual void assign_bubble_dofs() {};
+			virtual void assign_vertex_dofs();
+			virtual void assign_edge_dofs();
+			virtual void assign_bubble_dofs();
 
-      virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al);
-      virtual void get_boundary_assembly_list_internal(Element* e, int ie, AsmList<Scalar>* al);
+			virtual void get_vertex_assembly_list(Element* e, int iv, AsmList<Scalar>* al) const;
+			virtual void get_boundary_assembly_list_internal(Element* e, int ie, AsmList<Scalar>* al) const;
 
-      static double** h1_proj_mat;
-      static double*  h1_chol_p;
-      static int      h1_proj_ref;
+			struct EdgeInfo
+			{
+				Node* node;
+				int part;
+				int ori;
+				double lo, hi;
+			};
 
-      struct EdgeInfo
-      {
-        Node* node;
-        int part;
-        int ori;
-        double lo, hi;
-      };
+			inline void output_component(typename Space<Scalar>::BaseComponent*& current, typename Space<Scalar>::BaseComponent*& last, typename Space<Scalar>::BaseComponent* min,
+				Node*& edge, typename Space<Scalar>::BaseComponent*& edge_dofs);
 
-      inline void output_component(typename Space<Scalar>::BaseComponent*& current, typename Space<Scalar>::BaseComponent*& last, typename Space<Scalar>::BaseComponent* min,
-        Node*& edge, typename Space<Scalar>::BaseComponent*& edge_dofs);
+			typename Space<Scalar>::BaseComponent* merge_baselists(typename Space<Scalar>::BaseComponent* l1, int n1, typename Space<Scalar>::BaseComponent* l2, int n2,
+				Node* edge, typename Space<Scalar>::BaseComponent*& edge_dofs, int& ncomponents);
 
-      typename Space<Scalar>::BaseComponent* merge_baselists(typename Space<Scalar>::BaseComponent* l1, int n1, typename Space<Scalar>::BaseComponent* l2, int n2,
-        Node* edge, typename Space<Scalar>::BaseComponent*& edge_dofs, int& ncomponents);
+			void update_constrained_nodes(Element* e, EdgeInfo* ei0, EdgeInfo* ei1, EdgeInfo* ei2, EdgeInfo* ei3);
 
-      void update_constrained_nodes(Element* e, EdgeInfo* ei0, EdgeInfo* ei1, EdgeInfo* ei2, EdgeInfo* ei3);
+			virtual void update_constraints();
 
-      virtual void update_constraints();
+			struct FixedVertex
+			{
+				int id;
+				Scalar value;
+			};
 
-      struct FixedVertex
-      {
-        int id;
-        Scalar value;
-      };
+			Hermes::vector<FixedVertex> fixed_vertices;
 
-      Hermes::vector<FixedVertex> fixed_vertices;
+			inline bool is_fixed_vertex(int id) const;
 
-      inline bool is_fixed_vertex(int id) const;
-
-      virtual void post_assign();
-    };
-  }
+			virtual void post_assign();
+			friend class Space<Scalar>;
+		};
+	}
 }
 #endif

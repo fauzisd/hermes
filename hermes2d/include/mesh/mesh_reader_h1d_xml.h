@@ -25,19 +25,15 @@
 
 #include "mesh_h1d_xml.h"
 
-// This is here mainly because XSD uses its own error, therefore it had to be undefined previously.
-#ifndef error
-#define error(...) hermes_exit_if(hermes_log_message_if(true, HERMES_BUILD_LOG_INFO(HERMES_EC_ERROR), __VA_ARGS__))
-#endif
-
 namespace Hermes
 {
   namespace Hermes2D
   {
-    /// Mesh reader from Hermes2D format
+    /// Mesh reader from Hermes1D XML format
     ///
     /// @ingroup mesh_readers
-    class HERMES_API MeshReaderH1DXML : public MeshReader
+    /// The format specification is in hermes2d/xml_schemas/mesh_h1d_xml.xsd
+    class HERMES_API MeshReaderH1DXML : public MeshReader, public Hermes::Hermes2D::Mixins::XMLParsing
     {
     public:
       MeshReaderH1DXML();
@@ -52,4 +48,3 @@ namespace Hermes
   }
 }
 #endif
-

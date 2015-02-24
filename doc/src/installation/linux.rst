@@ -1,5 +1,5 @@
 Linux
-=====
+-----
 
 Download and compilation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -31,30 +31,26 @@ your local copy and the master repository, and you'll become part of the Hermes
 network at Github.
 
 Once you have a local copy of the Hermes repository on your computer, change dir 
-to hermes/. There you will find a CMakeLists.txt file that contains the lines
-::
+to hermes/. There you will find a CMakeLists.txt file that contains the lines::
 
-    # Testing.
-    set(WITH_TESTS                YES)
+    # OpenMP
+    # "-1" stands for using as many threads as is the number of available cores.
+    # Please be aware that the variable OMP_NUM_THREADS, that is often used for this purpose, is ignored.
+    set(NUM_THREADS -1)
     
-    # Optional parts of the library:
-    set(WITH_H1D                  YES)
-        # Release and debug versions.
-        set(H1D_DEBUG             YES)
-        ...
-  
-    set(WITH_H2D                  YES)
-        # Real/complex version of the library (you can build either one or both):
-        set(H2D_REAL              YES)
-        set(H2D_COMPLEX           YES)
-        # Release and debug versions.
-        set(H2D_DEBUG             YES)
-        ...
-  
-    set(WITH_H3D                  YES)
-        # Real/complex version of the library.
-        set(H3D_REAL              YES)
-        ...
+    # HermesCommon
+      set(HERMES_COMMON_DEBUG     YES)
+		  set(HERMES_COMMON_RELEASE   YES)
+      ...
+      
+    # Hermes2D:
+    set(WITH_H2D                        YES)
+      set(H2D_DEBUG               YES)
+		  set(H2D_RELEASE             YES)
+		  # Optional parts of the library.
+		  set(H2D_WITH_GLUT 					YES)
+      ...
+      
     set(WITH_SUPERLU            NO)
     ...
 
@@ -69,49 +65,6 @@ After that, type::
 
 If you have more than one CPU, you can use "make -jN" where N is
 the number of CPUs of your computer.
-
-Tests
-~~~~~
-
-To execute all tests, do::
-
-    ctest -jN
-
-where N is the number of your cores. Note that some tests (especially for adaptivity 
-algorithms) take a longer time to finish. To just execute the short running tests, type::
-
-    make test-quick
-
-More options
-~~~~~~~~~~~~
-
-You can turn on and off various components to build, just create the CMake.vars
-file and add the following::
-
-    set(WITH_EXAMPLES NO)
-
-(and any other option that you would like to change, see CMakeLists.txt for the
-whole list).
-
-You can also easily generate it from a script (e.g. a debian/rules file) by:
-
-.. sourcecode::
-    .
-
-    python -c 'print "set(H2D_COMPLEX no)\nset(WITH_EXAMPLES no)\nset(WITH_TUTORIAL no)\nset(WITH_PYTHON yes)\nset(WITH_GLUT no)\nset(WITH_UTIL no)"' > CMake.vars
-
-.. latexcode::
-    .
-
-    python -c 'print "set(H2D_COMPLEX no)\nset(WITH_EXAMPLES no)
-    \nset(WITH_TUTORIAL no)\nset(WITH_PYTHON yes)\nset(WITH_GLUT no)
-    \nset(WITH_UTIL no)"' > CMake.vars
-
-If you are on OS X, you have to disable GLUT as the glut library is not easily
-installable on OS X. To do so, just put the following line into your
-CMake.vars::
-
-    set(WITH_GLUT NO)
 
 Debugging with Eclipse
 ~~~~~~~~~~~~~~~~~~~~~~

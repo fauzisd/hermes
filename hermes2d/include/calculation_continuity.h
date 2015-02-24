@@ -16,8 +16,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Hermes2D; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-/*! \file calculation_continuity.h
-\brief Calculation continuity functionality.
+/*! \file calculation_CalculationContinuity.h
+\brief Calculation CalculationContinuity functionality.
 */
 
 #include "config.h"
@@ -28,10 +28,41 @@ namespace Hermes
 {
   namespace Hermes2D
   {
+    /// Own exception class to catch all potential exceptions that might occur in saving / loading entities using the subsequent classes.
+    class HERMES_API CalculationContinuityException : public Hermes::Exceptions::Exception
+    {
+    public:
+      enum exceptionEntityType
+      {
+        meshes,
+        spaces,
+        solutions,
+        time_steps,
+        error,
+        general
+      };
+      CalculationContinuityException();
+      CalculationContinuityException(exceptionEntityType type, const char * msg);
+      void init(exceptionEntityType type, const char * msg);
+    };
+
+    /// A derived exception for I/O
+    class HERMES_API IOCalculationContinuityException : public CalculationContinuityException
+    {
+    public:
+      enum inputOutput
+      {
+        input,
+        output
+      };
+      IOCalculationContinuityException(exceptionEntityType type, inputOutput inputOutput, const char * filename);
+      IOCalculationContinuityException(exceptionEntityType type, inputOutput inputOutput, const char * filename, const char * reason);
+    };
+
     /// Class used for resuming an interrupted calculation.
     /// Its purpose is to store everything necessary to resume it from a certain point.
     template<typename Scalar>
-    class HERMES_API Continuity
+    class HERMES_API CalculationContinuity
     {
     public:
       /// Choose an identification method of records.
@@ -43,7 +74,7 @@ namespace Hermes
         onlyNumber
       };
 
-      Continuity(IdentificationMethod identification_method);
+      CalculationContinuity(IdentificationMethod identification_method);
 
       /// One record of the calculation. Stores every information to resume a calculation from this one point.
       class HERMES_API Record
@@ -71,6 +102,7 @@ namespace Hermes
 
         /// Saves the time step length.
         void save_time_step_length(double time_step_length_to_save);
+        void save_time_step_length_n_minus_one(double time_step_length_to_save);
 
         /// Saves the spatial error estimate.
         void save_error(double error);
@@ -81,22 +113,23 @@ namespace Hermes
         void load_mesh(Mesh* mesh);
 
         /// Loads vector of spaces.
-        void load_spaces(Hermes::vector<Space<Scalar>*> spaces, Hermes::vector<SpaceType> space_types, Hermes::vector<Mesh*> meshes, Hermes::vector<EssentialBCs<Scalar>*> essential_bcs, Hermes::vector<Shapeset*> shapeset = Hermes::vector<Shapeset*>());
+        Hermes::vector<Space<Scalar>*> load_spaces(Hermes::vector<Mesh*> meshes, Hermes::vector<EssentialBCs<Scalar>*> essential_bcs, Hermes::vector<Shapeset*> shapeset = Hermes::vector<Shapeset*>());
 
         /// Loads vector of spaces.
         /// Version without essential BCs.
-        void load_spaces(Hermes::vector<Space<Scalar>*> spaces, Hermes::vector<SpaceType> space_types, Hermes::vector<Mesh*> meshes, Hermes::vector<Shapeset*> shapeset = Hermes::vector<Shapeset*>());
+        Hermes::vector<Space<Scalar>*> load_spaces(Hermes::vector<Mesh*> meshes, Hermes::vector<Shapeset*> shapeset = Hermes::vector<Shapeset*>());
 
         /// Loads one space.
-        void load_space(Space<Scalar>* space, SpaceType space_type, Mesh* mesh, EssentialBCs<Scalar>* essential_bcs = NULL, Shapeset* shapeset = NULL);
+        Space<Scalar>* load_space(Mesh* mesh, EssentialBCs<Scalar>* essential_bcs = NULL, Shapeset* shapeset = NULL);
 
         /// Loads vector of solutions.
-        void load_solutions(Hermes::vector<Solution<Scalar>*> solutions, Hermes::vector<Mesh*> meshes);
+        void load_solutions(Hermes::vector<Solution<Scalar>*> solutions, Hermes::vector<Space<Scalar>*> spaces);
         /// Loads one solution.
-        void load_solution(Solution<Scalar>* solution, Mesh* mesh);
+        void load_solution(Solution<Scalar>* solution, Space<Scalar>* space);
 
         /// Loads the time step length.
         void load_time_step_length(double & time_step_length);
+        void load_time_step_length_n_minus_one(double & time_step_length);
 
         /// Loads the spatial error estimate.
         void load_error(double & error);
@@ -115,12 +148,6 @@ namespace Hermes
         /// Storage of filenames of needed solution files.
         Hermes::vector<std::string> solutionFiles;
 
-        /// Optional time step length information.
-        double time_step_length;
-
-        /// Optional spatial error estimate information.
-        double error;
-
         /// Internals. Used for identifying.
         double time;
         unsigned int number;
@@ -128,15 +155,18 @@ namespace Hermes
 
       /// Add a record.
       /// See records.
-      void add_record(double time, unsigned int number);
+      void add_record(double time, unsigned int number, Mesh* mesh, Space<Scalar>* space = NULL, Solution<Scalar>* sln = NULL, double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
+      void add_record(double time, unsigned int number, Hermes::vector<Mesh*> meshes, Hermes::vector<Space<Scalar>*> spaces = Hermes::vector<Space<Scalar>*>(), Hermes::vector<Solution<Scalar>*> slns = Hermes::vector<Solution<Scalar>*>(), double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
 
       /// Add a record.
       /// See time_records.
-      void add_record(double time);
+      void add_record(double time, Mesh* mesh, Space<Scalar>* space = NULL, Solution<Scalar>* sln = NULL, double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
+      void add_record(double time, Hermes::vector<Mesh*> meshes, Hermes::vector<Space<Scalar>*> spaces = Hermes::vector<Space<Scalar>*>(), Hermes::vector<Solution<Scalar>*> slns = Hermes::vector<Solution<Scalar>*>(), double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
 
       /// Add a record.
       /// See numbered_records.
-      void add_record(unsigned int number);
+      void add_record(unsigned int number, Mesh* mesh, Space<Scalar>* space = NULL, Solution<Scalar>* sln = NULL, double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
+      void add_record(unsigned int number, Hermes::vector<Mesh*> meshes, Hermes::vector<Space<Scalar>*> spaces = Hermes::vector<Space<Scalar>*>(), Hermes::vector<Solution<Scalar>*> slns = Hermes::vector<Solution<Scalar>*>(), double time_step = 0.0, double time_step_n_minus_one = 0.0, double error = 0.0);
 
       /// Returns the value of record_available.
       /// See record_available.
@@ -148,20 +178,21 @@ namespace Hermes
       /// Returns the count of records.
       int get_num() const;
 
+      /// Setting of the names for the file stored.
+      static void set_mesh_file_name(std::string mesh_file_nameToSet);
+      static void set_space_file_name(std::string space_file_nameToSet);
+      static void set_solution_file_name(std::string solution_file_nameToSet);
+      static void set_time_step_file_name(std::string time_step_file_nameToSet);
+      static void set_error_file_name(std::string error_file_nameToSet);
+
     private:
       /// Names for the file stored.
-      static std::string meshFileName;
-      static std::string spaceFileName;
-      static std::string solutionFileName;
-      static std::string timeStepFileName;
-      static std::string errorFileName;
-
-      /// Setting of the names for the file stored.
-      static void set_meshFileName(std::string meshFileNameToSet);
-      static void set_spaceFileName(std::string spaceFileNameToSet);
-      static void set_solutionFileName(std::string solutionFileNameToSet);
-      static void set_timeStepFileName(std::string timeStepFileNameToSet);
-      static void set_errorFileName(std::string errorFileNameToSet);
+      static std::string mesh_file_name;
+      static std::string space_file_name;
+      static std::string solution_file_name;
+      static std::string time_step_file_name;
+      static std::string time_stepNMinusOne_file_name;
+      static std::string error_file_name;
 
       /// For time dependent adaptive problems.
       std::map<std::pair<double, unsigned int>, Record*> records;

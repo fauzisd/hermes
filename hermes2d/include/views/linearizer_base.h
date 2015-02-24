@@ -21,7 +21,7 @@
 #ifndef __H2D_LINEARIZER_SUPPORT_H
 #define __H2D_LINEARIZER_SUPPORT_H
 
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "../quadrature/quad_all.h"
 
 namespace Hermes
@@ -72,7 +72,7 @@ namespace Hermes
 
       /// Base class for Linearizer, Orderizer, Vectorizer.
 
-      class HERMES_API LinearizerBase
+      class HERMES_API LinearizerBase : public Hermes::Mixins::TimeMeasurable, public Hermes::Mixins::Loggable
       {
       public:
         void set_max_absolute_value(double max_abs);
@@ -84,9 +84,18 @@ namespace Hermes
         void unlock_data() const;
 
         int3* get_triangles();
+        int* get_triangle_markers();
         int get_num_triangles();
-        int3* get_edges();
+        int2* get_edges();
+        int* get_edge_markers();
         int get_num_edges();
+
+        /// The instance is empty. Either process_solution has not been called so far, or
+        /// the method free() has been called.
+        virtual bool is_empty();
+
+        /// Frees the instance.
+        void free();
 
       protected:
         LinearizerBase(bool auto_max = true);
@@ -94,32 +103,40 @@ namespace Hermes
 
         void process_edge(int iv1, int iv2, int marker);
 
+        bool empty;
+
         double max;
+
+        void regularize_triangle(int iv0, int iv1, int iv2, int mid0, int mid1, int mid2, int marker);
 
         bool auto_max;
 
         int3* tris;      ///< triangles: vertex index triplets
-        int3* edges;     ///< edges: pairs of vertex indices
+        int* tri_markers;///< triangle_markers: triangle markers, ordering equal to tris
+        int2* edges;     ///< edges: pairs of vertex indices
+        int* edge_markers;     ///< edge_markers: edge markers, ordering equal to edges
         int* hash_table; ///< hash table
         int4 * info; ///< info[0] = p1, info[1] = p2, info[2] = next vertex in hash
 
         int vertex_count, triangle_count, edges_count; ///< Real numbers of vertices, triangles and edges
         int vertex_size, triangle_size, edges_size; ///< Size of arrays of vertices, triangles and edges
 
-        bool curved;
-
         double eps;
 
         double min_val, max_val;
 
+        int del_slot;   ///< free slot index after a triangle which was deleted
+
         int peek_vertex(int p1, int p2);
 
         void add_edge(int iv1, int iv2, int marker);
-        void add_triangle(int iv0, int iv1, int iv2);
+        void add_triangle(int iv0, int iv1, int iv2, int marker);
 
         int hash(int p1, int p2);
 
         mutable pthread_mutex_t data_mutex;
+
+        Hermes::Exceptions::Exception* caughtException;
 
         /// Calculates AABB from an array of X-axis and Y-axis coordinates. The distance between values in the array is stride bytes.
         static void calc_aabb(double* x, double* y, int stride, int num, double* min_x, double* max_x, double* min_y, double* max_y);

@@ -38,7 +38,21 @@ namespace Hermes
     /// Mesh reader from Hermes2D format
     ///
     /// @ingroup mesh_readers
-    class HERMES_API MeshReaderH2DXML : public MeshReader
+    /// Typical usage:
+    /// Hermes::Hermes2D::Mesh mesh;
+    /// Hermes::Hermes2D::MeshReaderH2DXML mloader;
+    /// try
+    /// {
+    ///&nbsp;mloader.load("mesh.xml", &mesh);
+    /// }
+    /// catch(Exceptions::MeshLoadFailureException& e)
+    /// {
+    ///&nbsp;e.print_msg();
+    ///&nbsp;return -1;
+    /// }
+    /// 
+    /// The format specification is in hermes2d/xml_schemas/mesh_h2d_xml.xsd
+    class HERMES_API MeshReaderH2DXML : public MeshReader, public Hermes::Hermes2D::Mixins::XMLParsing
     {
     public:
       MeshReaderH2DXML();
@@ -52,7 +66,7 @@ namespace Hermes
 
       /// This method loads multiple meshes according to subdomains described in the meshfile.
       /// \param[in] meshes Meshes to be loaded, the number must correspond to the subdomains described in the file.
-      ///            also the order is determined by the order in the file.
+      ///&nbsp;         also the order is determined by the order in the file.
       bool load(const char *filename, Hermes::vector<Mesh *> meshes);
 
       /// This method saves multiple meshes according to subdomains in the vector meshes.
@@ -63,17 +77,19 @@ namespace Hermes
       bool load(std::auto_ptr<XMLMesh::mesh> & parsed_xml_mesh, Mesh *mesh, std::map<unsigned int, unsigned int>& vertex_is);
 
       /// Internal method loading contents of parsed_xml_domain's domain into mesh.
-      bool load(std::auto_ptr<XMLSubdomains::domain> & parsed_xml_domain, Mesh *mesh, std::map<unsigned int, unsigned int>& vertex_is, std::map<unsigned int, unsigned int>& element_is, std::map<unsigned int, unsigned int>& edge_is);
+      bool load(std::auto_ptr<XMLSubdomains::domain> & parsed_xml_domain, Mesh *mesh, int* vertex_is, int* element_is, int* edge_is);
 
       /// Loads one circular arc.
-      /// \param [in] parsed_xml_entity Either XMLSubdomains::domain or XMLMesh::mesh.
+      /// \param[in] parsed_xml_entity Either XMLSubdomains::domain or XMLMesh::mesh.
+      /// \param[in] skip_check Skip check that the edge exists, in case of subdomains.
       template<typename T>
-      Nurbs* load_arc(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2);
+      Nurbs* load_arc(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2, bool skip_check = false);
 
       /// Loads one general NURBS curve.
-      /// \param [in] parsed_xml_entity Either XMLSubdomains::domain or XMLMesh::mesh.
+      /// \param[in] parsed_xml_entity Either XMLSubdomains::domain or XMLMesh::mesh.
+      /// \param[in] skip_check Skip check that the edge exists, in case of subdomains.
       template<typename T>
-      Nurbs* load_nurbs(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2);
+      Nurbs* load_nurbs(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2, bool skip_check = false);
 
       /// Saves one circular arc.
       void save_arc(Mesh *mesh, int p1, int p2, Nurbs* nurbs, XMLMesh::curves_type & curves);
@@ -84,4 +100,3 @@ namespace Hermes
   }
 }
 #endif
-

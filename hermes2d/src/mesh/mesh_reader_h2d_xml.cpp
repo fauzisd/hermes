@@ -14,6 +14,7 @@
 // along with Hermes2D; if not, see <http://www.gnu.prg/licenses/>.
 
 #include "mesh.h"
+#include "api2d.h"
 #include "mesh_reader_h2d_xml.h"
 #include <iostream>
 
@@ -39,31 +40,36 @@ namespace Hermes
 
       try
       {
-        std::auto_ptr<XMLMesh::mesh> parsed_xml_mesh(XMLMesh::mesh_(filename));
+        ::xml_schema::flags parsing_flags = 0;
+        if(!this->validate)
+          parsing_flags = xml_schema::flags::dont_validate;
+
+        std::auto_ptr<XMLMesh::mesh> parsed_xml_mesh(XMLMesh::mesh_(filename, parsing_flags));
 
         if(!load(parsed_xml_mesh, mesh, vertex_is))
           return false;
 
         // refinements.
-        if (parsed_xml_mesh->refinements().present() && parsed_xml_mesh->refinements()->refinement().size() > 0)
+        if(parsed_xml_mesh->refinements().present() && parsed_xml_mesh->refinements()->ref().size() > 0)
         {
           // perform initial refinements
-          for (unsigned int i = 0; i < parsed_xml_mesh->refinements()->refinement().size(); i++)
+          for (unsigned int i = 0; i < parsed_xml_mesh->refinements()->ref().size(); i++)
           {
-            int element_id = parsed_xml_mesh->refinements()->refinement().at(i).element_id();
-            int refinement_type = parsed_xml_mesh->refinements()->refinement().at(i).refinement_type();
+            int element_id = parsed_xml_mesh->refinements()->ref().at(i).element_id();
+            int refinement_type = parsed_xml_mesh->refinements()->ref().at(i).refinement_type();
             if(refinement_type == -1)
               mesh->unrefine_element_id(element_id);
             else
               mesh->refine_element_id(element_id, refinement_type);
           }
         }
+        mesh->initial_single_check();
       }
       catch (const xml_schema::exception& e)
       {
-        std::cerr << e << std::endl;
-        std::exit(1);
+        throw Hermes::Exceptions::MeshLoadFailureException(e.what());
       }
+      return true;
     }
 
     bool MeshReaderH2DXML::save(const char *filename, Mesh *mesh)
@@ -81,7 +87,7 @@ namespace Hermes
         std::ostringstream y_stream;
         y_stream << mesh->nodes[i].y;
 
-        vertices.vertex().push_back(std::auto_ptr<XMLMesh::vertex>(new XMLMesh::vertex(x_stream.str(), y_stream.str(), i)));
+        vertices.v().push_back(std::auto_ptr<XMLMesh::v>(new XMLMesh::v(x_stream.str(), y_stream.str(), i)));
       }
 
       // save elements
@@ -89,25 +95,25 @@ namespace Hermes
       for (int i = 0; i < mesh->get_num_base_elements(); i++)
       {
         e = mesh->get_element_fast(i);
-        if (e->used)
-          if (e->is_triangle())
-            elements.element().push_back(XMLMesh::triangle_type(e->vn[0]->id, e->vn[1]->id, e->vn[2]->id, mesh->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str()));
+        if(e->used)
+          if(e->is_triangle())
+            elements.el().push_back(XMLMesh::t_t(e->vn[0]->id, e->vn[1]->id, e->vn[2]->id, mesh->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str()));
           else
-            elements.element().push_back(XMLMesh::quad_type(e->vn[0]->id, e->vn[1]->id, e->vn[2]->id, mesh->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->vn[3]->id));
+            elements.el().push_back(XMLMesh::q_t(e->vn[0]->id, e->vn[1]->id, e->vn[2]->id, mesh->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->vn[3]->id));
       }
       // save boundary markers
       XMLMesh::edges_type edges;
       for_all_base_elements(e, mesh)
-        for (unsigned i = 0; i < e->get_num_surf(); i++)
-          if (mesh->get_base_edge_node(e, i)->marker)
-            edges.edge().push_back(XMLMesh::edge(e->vn[i]->id, e->vn[e->next_vert(i)]->id, mesh->boundary_markers_conversion.get_user_marker(mesh->get_base_edge_node(e, i)->marker).marker.c_str()));
+        for (unsigned i = 0; i < e->get_nvert(); i++)
+          if(mesh->get_base_edge_node(e, i)->marker)
+            edges.ed().push_back(XMLMesh::ed(e->vn[i]->id, e->vn[e->next_vert(i)]->id, mesh->boundary_markers_conversion.get_user_marker(mesh->get_base_edge_node(e, i)->marker).marker.c_str()));
 
       // save curved edges
       XMLMesh::curves_type curves;
       for_all_base_elements(e, mesh)
-        if (e->is_curved())
-          for (unsigned i = 0; i < e->get_num_surf(); i++)
-            if (e->cm->nurbs[i] != NULL && !is_twin_nurbs(e, i))
+        if(e->is_curved())
+          for (unsigned i = 0; i < e->get_nvert(); i++)
+            if(e->cm->nurbs[i] != NULL && !is_twin_nurbs(e, i))
               if(e->cm->nurbs[i]->arc)
                 save_arc(mesh, e->vn[i]->id, e->vn[e->next_vert(i)]->id, e->cm->nurbs[i], curves);
               else
@@ -116,13 +122,13 @@ namespace Hermes
       // save refinements
       XMLMesh::refinements_type refinements;
       for(unsigned int refinement_i = 0; refinement_i < mesh->refinements.size(); refinement_i++)
-        refinements.refinement().push_back(XMLMesh::refinement(mesh->refinements[refinement_i].first, mesh->refinements[refinement_i].second));
+        refinements.ref().push_back(XMLMesh::ref(mesh->refinements[refinement_i].first, mesh->refinements[refinement_i].second));
 
       XMLMesh::mesh xmlmesh(vertices, elements, edges);
       xmlmesh.curves().set(curves);
       xmlmesh.refinements().set(refinements);
 
-      std::string mesh_schema_location(H2D_XML_SCHEMAS_DIRECTORY);
+      std::string mesh_schema_location(Hermes2DApi.get_text_param_value(xmlSchemasDirPath));
       mesh_schema_location.append("/mesh_h2d_xml.xsd");
       ::xml_schema::namespace_info namespace_info_mesh("XMLMesh", mesh_schema_location);
 
@@ -130,7 +136,8 @@ namespace Hermes
       namespace_info_map.insert(std::pair<std::basic_string<char>, xml_schema::namespace_info>("mesh", namespace_info_mesh));
 
       std::ofstream out(filename);
-      XMLMesh::mesh_(out, xmlmesh, namespace_info_map);
+      ::xml_schema::flags parsing_flags = ::xml_schema::flags::dont_pretty_print;
+      XMLMesh::mesh_(out, xmlmesh, namespace_info_map, "UTF-8", parsing_flags);
       out.close();
 
       return true;
@@ -139,47 +146,119 @@ namespace Hermes
     bool MeshReaderH2DXML::load(const char *filename, Hermes::vector<Mesh *> meshes)
     {
       for(unsigned int meshes_i = 0; meshes_i < meshes.size(); meshes_i++)
+      {
         meshes.at(meshes_i)->free();
+      }
 
       Mesh global_mesh;
 
       try
       {
-        std::auto_ptr<XMLSubdomains::domain> parsed_xml_domain (XMLSubdomains::domain_(filename));
+        ::xml_schema::flags parsing_flags = 0;
+        if(!this->validate)
+          parsing_flags = xml_schema::flags::dont_validate;
 
-        std::map<unsigned int, unsigned int> vertex_is;
-        std::map<unsigned int, unsigned int> element_is;
-        std::map<unsigned int, unsigned int> edge_is;
+        std::auto_ptr<XMLSubdomains::domain> parsed_xml_domain (XMLSubdomains::domain_(filename, parsing_flags));
+
+        int* vertex_is = new int[H2D_MAX_NODE_ID];
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          vertex_is[i] = -1;
+
+        int* element_is = new int[H2D_MAX_NODE_ID];
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          element_is[i] = -1;
+
+        int* edge_is = new int[H2D_MAX_NODE_ID];
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          edge_is[i] = -1;
 
         if(!load(parsed_xml_domain, &global_mesh, vertex_is, element_is, edge_is))
           return false;
 
+        int max_vertex_i = -1;
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          if(vertex_is[i] > max_vertex_i)
+            max_vertex_i = vertex_is[i];
+        int max_element_i = -1;
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          if(element_is[i] > max_element_i)
+            max_element_i = element_is[i];
+        int max_edge_i = -1;
+        for(int i = 0; i < H2D_MAX_NODE_ID; i++)
+          if(edge_is[i] > max_edge_i)
+            max_edge_i = edge_is[i];
+
         // Subdomains //
         unsigned int subdomains_count = parsed_xml_domain->subdomains().subdomain().size();
         if(subdomains_count != meshes.size())
-          error("Number of subdomains( = %u) does not equal the number of provided meshes in the vector( = %u).", subdomains_count, meshes.size());
+          throw Hermes::Exceptions::MeshLoadFailureException("Number of subdomains( = %u) does not equal the number of provided meshes in the vector( = %u).", subdomains_count, meshes.size());
+
+        for(unsigned int subdomains_i = 0; subdomains_i < subdomains_count; subdomains_i++)
+        {
+          for (int element_i = 0; element_i < parsed_xml_domain->elements().el().size(); element_i++)
+          {
+            XMLSubdomains::domain::elements_type::el_type* element = &parsed_xml_domain->elements().el().at(element_i);
+
+            // Trim whitespaces.
+            unsigned int begin = element->m().find_first_not_of(" \t\n");
+            unsigned int end = element->m().find_last_not_of(" \t\n");
+            element->m().erase(end + 1, element->m().length());
+            element->m().erase(0, begin);
+
+            meshes[subdomains_i]->element_markers_conversion.insert_marker(meshes[subdomains_i]->element_markers_conversion.min_marker_unused, element->m());
+          }
+          for(unsigned int edge_i = 0; edge_i < parsed_xml_domain->edges().ed().size(); edge_i++)
+          {
+            XMLSubdomains::domain::edges_type::ed_type* edge = &parsed_xml_domain->edges().ed().at(edge_i);
+
+            // Trim whitespaces.
+            unsigned int begin = edge->m().find_first_not_of(" \t\n");
+            unsigned int end = edge->m().find_last_not_of(" \t\n");
+            edge->m().erase(end + 1, edge->m().length());
+            edge->m().erase(0, begin);
+
+            meshes[subdomains_i]->boundary_markers_conversion.insert_marker(meshes[subdomains_i]->boundary_markers_conversion.min_marker_unused, edge->m());
+          }
+        }
 
         for(unsigned int subdomains_i = 0; subdomains_i < subdomains_count; subdomains_i++)
         {
           unsigned int vertex_number_count = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).vertices().present() ? parsed_xml_domain->subdomains().subdomain().at(subdomains_i).vertices()->i().size() : 0;
           unsigned int element_number_count = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).elements().present() ? parsed_xml_domain->subdomains().subdomain().at(subdomains_i).elements()->i().size() : 0;
-          unsigned int edge_number_count = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).edges().present() ? parsed_xml_domain->subdomains().subdomain().at(subdomains_i).edges()->i().size() : 0;
+          unsigned int boundary_edge_number_count = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).boundary_edges().present() ? parsed_xml_domain->subdomains().subdomain().at(subdomains_i).boundary_edges()->i().size() : 0;
+          unsigned int inner_edge_number_count = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).inner_edges().present() ? parsed_xml_domain->subdomains().subdomain().at(subdomains_i).inner_edges()->i().size() : 0;
 
-          // copy nodes and elements
-          if(vertex_number_count == 0 && element_number_count == 0 && edge_number_count == 0)
+          // copy the whole mesh if the subdomain is the whole mesh.
+          if(element_number_count == 0 || element_number_count == parsed_xml_domain->elements().el().size())
           {
             meshes[subdomains_i]->copy(&global_mesh);
-            continue;
+            // refinements.
+            if(parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements().present() && parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().size() > 0)
+            {
+              // perform initial refinements
+              for (unsigned int i = 0; i < parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().size(); i++)
+              {
+                int element_id = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().at(i).element_id();
+                int refinement_type = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().at(i).refinement_type();
+                if(refinement_type == -1)
+                  meshes[subdomains_i]->unrefine_element_id(element_id);
+                else
+                  meshes[subdomains_i]->refine_element_id(element_id, refinement_type);
+              }
+            }
           }
           else
           {
             // Variables //
-            unsigned int variables_count = parsed_xml_domain->variables().present() ? parsed_xml_domain->variables()->variable().size() : 0;
+            unsigned int variables_count = parsed_xml_domain->variables().present() ? parsed_xml_domain->variables()->var().size() : 0;
 
             std::map<std::string, double> variables;
             for (unsigned int variables_i = 0; variables_i < variables_count; variables_i++)
-              variables.insert(std::make_pair<std::string, double>(parsed_xml_domain->variables()->variable().at(variables_i).name(), parsed_xml_domain->variables()->variable().at(variables_i).value()));
-
+#ifdef _MSC_VER
+              variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_domain->variables()->var().at(variables_i).name(), (double&&)parsed_xml_domain->variables()->var().at(variables_i).value()));
+#else
+              variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_domain->variables()->var().at(variables_i).name(), parsed_xml_domain->variables()->var().at(variables_i).value()));
+#endif
             // Vertex numbers //
             // create a mapping order-in-the-whole-domain <-> order-in-this-subdomain.
             std::map<unsigned int, unsigned int> vertex_vertex_numbers;
@@ -192,14 +271,18 @@ namespace Hermes
 
             // Create top-level vertex nodes.
             if(vertex_number_count == 0)
-              vertex_number_count = parsed_xml_domain->vertices().vertex().size();
+              vertex_number_count = parsed_xml_domain->vertices().v().size();
             for (unsigned int vertex_numbers_i = 0; vertex_numbers_i < vertex_number_count; vertex_numbers_i++)
             {
               unsigned int vertex_number;
-              if(vertex_number_count == parsed_xml_domain->vertices().vertex().size())
-                vertex_number = vertex_is.find(vertex_numbers_i)->second;
+              if(vertex_number_count == parsed_xml_domain->vertices().v().size())
+                vertex_number = vertex_is[vertex_numbers_i];
               else
-                vertex_number = vertex_is.find(parsed_xml_domain->subdomains().subdomain().at(subdomains_i).vertices()->i().at(vertex_numbers_i))->second;
+              {
+                vertex_number =  parsed_xml_domain->subdomains().subdomain().at(subdomains_i).vertices()->i().at(vertex_numbers_i);
+                if(vertex_number > max_vertex_i)
+                  throw Exceptions::MeshLoadFailureException("Wrong vertex number:%u in subdomain %u.", vertex_number, subdomains_i);
+              }
 
               vertex_vertex_numbers.insert(std::pair<unsigned int, unsigned int>(vertex_number, vertex_numbers_i));
               Node* node = meshes[subdomains_i]->nodes.add();
@@ -211,8 +294,8 @@ namespace Hermes
               node->next_hash = NULL;
 
               // variables matching.
-              std::string x = parsed_xml_domain->vertices().vertex().at(vertex_number).x();
-              std::string y = parsed_xml_domain->vertices().vertex().at(vertex_number).y();
+              std::string x = parsed_xml_domain->vertices().v().at(vertex_number).x();
+              std::string y = parsed_xml_domain->vertices().v().at(vertex_number).y();
               double x_value;
               double y_value;
 
@@ -240,10 +323,10 @@ namespace Hermes
                   int dot_position = strchr(x.c_str(), '.') == NULL ? -1 : strchr(x.c_str(), '.') - x.c_str();
                   for(int i = 0; i < dot_position; i++)
                     if(strncmp(x.c_str() + i, "0", 1) != 0)
-                      error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_number + 1);
+                      throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_number + 1);
                   for(int i = dot_position + 1; i < x.length(); i++)
                     if(strncmp(x.c_str() + i, "0", 1) != 0)
-                      error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_number + 1);
+                      throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_number + 1);
                   x_value = std::strtod(x.c_str(), NULL);
                 }
 
@@ -256,10 +339,10 @@ namespace Hermes
                     int dot_position = strchr(y.c_str(), '.') == NULL ? -1 : strchr(y.c_str(), '.') - y.c_str();
                     for(int i = 0; i < dot_position; i++)
                       if(strncmp(y.c_str() + i, "0", 1) != 0)
-                        error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_number + 1);
+                        throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_number + 1);
                     for(int i = dot_position + 1; i < y.length(); i++)
                       if(strncmp(y.c_str() + i, "0", 1) != 0)
-                        error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_number + 1);
+                        throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_number + 1);
                     y_value = std::strtod(y.c_str(), NULL);
                   }
 
@@ -270,23 +353,29 @@ namespace Hermes
             meshes[subdomains_i]->ntopvert = vertex_number_count;
 
             // Element numbers //
-            unsigned int element_count = parsed_xml_domain->elements().element().size();
+            unsigned int element_count = parsed_xml_domain->elements().el().size();
             meshes[subdomains_i]->nbase = element_count;
             meshes[subdomains_i]->nactive = meshes[subdomains_i]->ninitial = element_number_count;
 
             Element* e;
+            int* elements_existing = new int[element_count];
+            for(int i = 0; i < element_count; i++)
+              elements_existing[i] = -1;
+            for (int element_number_i = 0; element_number_i < element_number_count; element_number_i++)
+            {
+              int elementI = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).elements()->i().at(element_number_i);
+              if(elementI > max_element_i)
+                  throw Exceptions::MeshLoadFailureException("Wrong element number:%i in subdomain %u.", elementI, subdomains_i);
+
+              elements_existing[element_is[parsed_xml_domain->subdomains().subdomain().at(subdomains_i).elements()->i().at(element_number_i)]] = elementI;
+            }
             for (int element_i = 0; element_i < element_count; element_i++)
             {
               bool found = false;
               if(element_number_count == 0)
                 found = true;
               else
-                for (int element_number_i = 0; element_number_i < element_number_count; element_number_i++)
-                  if(element_is.find(parsed_xml_domain->subdomains().subdomain().at(subdomains_i).elements()->i().at(element_number_i))->second == element_i)
-                  {
-                     found = true;
-                     break;
-                  }
+                found = elements_existing[element_i] != -1;
 
               if(!found)
               {
@@ -294,59 +383,99 @@ namespace Hermes
                 continue;
               }
 
-              XMLSubdomains::domain::elements_type::element_type* element = &parsed_xml_domain->elements().element().at(element_i);
+              XMLSubdomains::domain::elements_type::el_type* element = NULL;
+              for(int searched_element_i = 0; searched_element_i < element_count; searched_element_i++)
+              {
+                element = &parsed_xml_domain->elements().el().at(searched_element_i);
+                if(element->i() == elements_existing[element_i])
+                  break;
+                else
+                  element = NULL;
+              }
+              if(element == NULL)
+                throw Exceptions::MeshLoadFailureException("Element number wrong in the mesh file.");
 
-              // Trim whitespaces.
-              unsigned int begin = element->marker().find_first_not_of(" \t\n");
-              unsigned int end = element->marker().find_last_not_of(" \t\n");
-              element->marker().erase(end + 1, element->marker().length());
-              element->marker().erase(0, begin);
-
-              meshes[subdomains_i]->element_markers_conversion.insert_marker(meshes[subdomains_i]->element_markers_conversion.min_marker_unused, element->marker());
-
-              if(dynamic_cast<XMLSubdomains::quad_type*>(element) != NULL)
-                e = meshes[subdomains_i]->create_quad(meshes[subdomains_i]->element_markers_conversion.get_internal_marker(element->marker()).marker,
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::quad_type*>(element)->v1())->second],
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::quad_type*>(element)->v2())->second],
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::quad_type*>(element)->v3())->second],
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::quad_type*>(element)->v4())->second],
-                NULL);
-              else
-                e = meshes[subdomains_i]->create_triangle(meshes[subdomains_i]->element_markers_conversion.get_internal_marker(element->marker()).marker,
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::triangle_type*>(element)->v1())->second],
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::triangle_type*>(element)->v2())->second],
-                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(dynamic_cast<XMLSubdomains::triangle_type*>(element)->v3())->second],
-                NULL);
+              XMLSubdomains::q_t* el_q = dynamic_cast<XMLSubdomains::q_t*>(element);
+              XMLSubdomains::t_t* el_t = dynamic_cast<XMLSubdomains::t_t*>(element);
+              if(el_q != NULL)
+                e = meshes[subdomains_i]->create_quad(meshes[subdomains_i]->element_markers_conversion.get_internal_marker(element->m()).marker,
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_q->v1())->second],
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_q->v2())->second],
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_q->v3())->second],
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_q->v4())->second],
+                NULL, element_i);
+              if(el_t != NULL)
+                e = meshes[subdomains_i]->create_triangle(meshes[subdomains_i]->element_markers_conversion.get_internal_marker(element->m()).marker,
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_t->v1())->second],
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_t->v2())->second],
+                &meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(el_t->v3())->second],
+                NULL, element_i);
             }
 
             // Boundary Edge numbers //
-            if(edge_number_count == 0)
-              edge_number_count = parsed_xml_domain->edges().edge().size();
+            if(boundary_edge_number_count == 0)
+              boundary_edge_number_count = parsed_xml_domain->edges().ed().size();
 
-            for (int edge_number_i = 0; edge_number_i < edge_number_count; edge_number_i++)
+            for (int boundary_edge_number_i = 0; boundary_edge_number_i < boundary_edge_number_count; boundary_edge_number_i++)
             {
-              XMLSubdomains::domain::edges_type::edge_type* edge;
-              if(edge_number_count == parsed_xml_domain->edges().edge().size())
-                edge = &parsed_xml_domain->edges().edge().at(edge_is.find(edge_number_i)->second);
-              else
-                edge = &parsed_xml_domain->edges().edge().at(edge_is.find(parsed_xml_domain->subdomains().subdomain().at(subdomains_i).edges()->i().at(edge_number_i))->second);
+              XMLSubdomains::domain::edges_type::ed_type* edge = NULL;
+              for(unsigned int to_find_i = 0; to_find_i < parsed_xml_domain->edges().ed().size(); to_find_i++)
+              {
+                if(boundary_edge_number_count != parsed_xml_domain->edges().ed().size())
+                {
+                  if(parsed_xml_domain->edges().ed().at(to_find_i).i() == parsed_xml_domain->subdomains().subdomain().at(subdomains_i).boundary_edges()->i().at(boundary_edge_number_i))
+                  {
+                    edge = &parsed_xml_domain->edges().ed().at(to_find_i);
+                    break;
+                  }
+                }
+                else
+                {
+                  if(parsed_xml_domain->edges().ed().at(to_find_i).i() == edge_is[boundary_edge_number_i])
+                  {
+                    edge = &parsed_xml_domain->edges().ed().at(to_find_i);
+                    break;
+                  }
+                }
+              }
+
+              if(edge == NULL)
+                  throw Exceptions::MeshLoadFailureException("Wrong boundary-edge number:%i in subdomain %u.", parsed_xml_domain->subdomains().subdomain().at(subdomains_i).boundary_edges()->i().at(boundary_edge_number_i), subdomains_i);
+
               Node* en = meshes[subdomains_i]->peek_edge_node(vertex_vertex_numbers.find(edge->v1())->second, vertex_vertex_numbers.find(edge->v2())->second);
-              if (en == NULL)
-                error("Boundary data error (edge does not exist)");
+              if(en == NULL)
+                throw Hermes::Exceptions::MeshLoadFailureException("Boundary data error (edge %i does not exist).", boundary_edge_number_i);
 
-              // Trim whitespaces.
-              unsigned int begin = edge->marker().find_first_not_of(" \t\n");
-              unsigned int end = edge->marker().find_last_not_of(" \t\n");
-              edge->marker().erase(end + 1, edge->marker().length());
-              edge->marker().erase(0, begin);
-
-              meshes[subdomains_i]->boundary_markers_conversion.insert_marker(meshes[subdomains_i]->boundary_markers_conversion.min_marker_unused, edge->marker());
-
-              en->marker = meshes[subdomains_i]->boundary_markers_conversion.get_internal_marker(edge->marker()).marker;
+              en->marker = meshes[subdomains_i]->boundary_markers_conversion.get_internal_marker(edge->m()).marker;
 
               meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(edge->v1())->second].bnd = 1;
               meshes[subdomains_i]->nodes[vertex_vertex_numbers.find(edge->v2())->second].bnd = 1;
               en->bnd = 1;
+            }
+
+            // Inner Edge numbers //
+            for (int inner_edge_number_i = 0; inner_edge_number_i < inner_edge_number_count; inner_edge_number_i++)
+            {
+              XMLSubdomains::domain::edges_type::ed_type* edge = NULL;
+
+              for(unsigned int to_find_i = 0; to_find_i < parsed_xml_domain->edges().ed().size(); to_find_i++)
+              {
+                if(parsed_xml_domain->edges().ed().at(to_find_i).i() == parsed_xml_domain->subdomains().subdomain().at(subdomains_i).inner_edges()->i().at(inner_edge_number_i))
+                {
+                  edge = &parsed_xml_domain->edges().ed().at(to_find_i);
+                  break;
+                }
+              }
+
+              if(edge == NULL)
+                  throw Exceptions::MeshLoadFailureException("Wrong inner-edge number:%i in subdomain %u.", parsed_xml_domain->subdomains().subdomain().at(subdomains_i).boundary_edges()->i().at(inner_edge_number_i), subdomains_i);
+
+              Node* en = meshes[subdomains_i]->peek_edge_node(vertex_vertex_numbers.find(edge->v1())->second, vertex_vertex_numbers.find(edge->v2())->second);
+              if(en == NULL)
+                throw Hermes::Exceptions::MeshLoadFailureException("Inner data error (edge %i does not exist).", inner_edge_number_i);
+
+              en->marker = meshes[subdomains_i]->boundary_markers_conversion.get_internal_marker(edge->m()).marker;
+              en->bnd = 0;
             }
 
             // Curves //
@@ -373,7 +502,9 @@ namespace Hermes
                   p1 = vertex_vertex_numbers.find(parsed_xml_domain->curves()->arc().at(curves_i).v1())->second;
                   p2 = vertex_vertex_numbers.find(parsed_xml_domain->curves()->arc().at(curves_i).v2())->second;
 
-                  nurbs = load_arc(meshes[subdomains_i], parsed_xml_domain, curves_i, &en, p1, p2);
+                  nurbs = load_arc(meshes[subdomains_i], parsed_xml_domain, curves_i, &en, p1, p2, true);
+                  if(nurbs == NULL)
+                    continue;
                 }
               }
               else
@@ -387,7 +518,9 @@ namespace Hermes
                   p1 = vertex_vertex_numbers.find(parsed_xml_domain->curves()->NURBS().at(curves_i - arc_count).v1())->second;
                   p2 = vertex_vertex_numbers.find(parsed_xml_domain->curves()->NURBS().at(curves_i - arc_count).v2())->second;
 
-                  nurbs = load_nurbs(meshes[subdomains_i], parsed_xml_domain, curves_i - arc_count, &en, p1, p2);
+                  nurbs = load_nurbs(meshes[subdomains_i], parsed_xml_domain, curves_i - arc_count, &en, p1, p2, true);
+                  if(nurbs == NULL)
+                    continue;
                 }
               }
 
@@ -395,9 +528,9 @@ namespace Hermes
               for (unsigned int node_i = 0; node_i < 2; node_i++)
               {
                 Element* e = en->elem[node_i];
-                if (e == NULL) continue;
+                if(e == NULL) continue;
 
-                if (e->cm == NULL)
+                if(e->cm == NULL)
                 {
                   e->cm = new CurvMap;
                   memset(e->cm, 0, sizeof(CurvMap));
@@ -406,11 +539,11 @@ namespace Hermes
                 }
 
                 int idx = -1;
-                for (unsigned j = 0; j < e->get_num_surf(); j++)
-                  if (e->en[j] == en) { idx = j; break; }
+                for (unsigned j = 0; j < e->get_nvert(); j++)
+                  if(e->en[j] == en) { idx = j; break; }
                   assert(idx >= 0);
 
-                  if (e->vn[idx]->id == p1)
+                  if(e->vn[idx]->id == p1)
                   {
                     e->cm->nurbs[idx] = nurbs;
                     nurbs->ref++;
@@ -422,22 +555,22 @@ namespace Hermes
                     nurbs_rev->ref++;
                   }
               }
-              if (!nurbs->ref) delete nurbs;
+              if(!nurbs->ref) delete nurbs;
             }
 
             // update refmap coeffs of curvilinear elements
             for_all_elements(e, meshes[subdomains_i])
-              if (e->cm != NULL)
+              if(e->cm != NULL)
                 e->cm->update_refmap_coeffs(e);
 
             // refinements.
-            if (parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements().present() && parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->refinement().size() > 0)
+            if(parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements().present() && parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().size() > 0)
             {
               // perform initial refinements
-              for (unsigned int i = 0; i < parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->refinement().size(); i++)
+              for (unsigned int i = 0; i < parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().size(); i++)
               {
-                int element_id = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->refinement().at(i).element_id();
-                int refinement_type = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->refinement().at(i).refinement_type();
+                int element_id = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().at(i).element_id();
+                int refinement_type = parsed_xml_domain->subdomains().subdomain().at(subdomains_i).refinements()->ref().at(i).refinement_type();
                 if(refinement_type == -1)
                   meshes[subdomains_i]->unrefine_element_id(element_id);
                 else
@@ -445,17 +578,27 @@ namespace Hermes
               }
             }
 
-            meshes[subdomains_i]->seq = g_mesh_seq++;
+            delete [] elements_existing;
           }
+          meshes[subdomains_i]->seq = g_mesh_seq++;
+          meshes[subdomains_i]->initial_single_check();
         }
+
+        delete [] vertex_is;
+
+        delete [] element_is;
+
+        delete [] edge_is;
+
         return true;
       }
       catch (const xml_schema::exception& e)
       {
-        std::cerr << e << std::endl;
-        std::exit(1);
+        throw Hermes::Exceptions::MeshLoadFailureException(e.what());
       }
     }
+
+    static bool elementCompare (XMLSubdomains::el_t* el_i, XMLSubdomains::el_t* el_j) { return ( el_i->i() < el_j->i() ); }
 
     bool MeshReaderH2DXML::save(const char *filename, Hermes::vector<Mesh *> meshes)
     {
@@ -469,23 +612,28 @@ namespace Hermes
       // Global vertices list.
       XMLMesh::vertices_type vertices;
       // Global elements list.
-      XMLSubdomains::elements_type elements;
+      Hermes::vector<XMLSubdomains::el_t*> elements;
       // Global boudnary edges list.
       XMLSubdomains::edges_type edges;
       // Global curves list.
       XMLMesh::curves_type curves;
+
+      bool* baseElementsSaved = new bool[meshes[0]->get_num_base_elements()];
+      memset(baseElementsSaved, 0, sizeof(bool) * meshes[0]->get_num_base_elements());
 
       // Subdomains.
       XMLSubdomains::subdomains subdomains;
 
       for(unsigned int meshes_i = 0; meshes_i < meshes.size(); meshes_i++)
       {
+        bool hasAllElements = (meshes[meshes_i]->get_num_used_base_elements() == meshes[meshes_i]->get_num_base_elements());
+
         // Create a subdomain.
         XMLSubdomains::subdomain subdomain("A subdomain");
 
         // Refinements.
         XMLMesh::refinements_type refinements;
-
+        
         // Mapping of top vertices of subdomains to the global mesh.
         std::map<unsigned int, unsigned int> vertices_to_vertices;
 
@@ -499,88 +647,98 @@ namespace Hermes
           // Look for the coordinates of this vertex.
           // If found, then insert the pair <this vertex number, the found vertex number> into vertices_to_vertices dictionary.
           // If not, insert.
-          if(points_to_vertices.find(std::pair<double, double>(meshes[meshes_i]->nodes[i].x, meshes[meshes_i]->nodes[i].y)) != points_to_vertices.end())
-            vertices_to_vertices.insert(std::pair<unsigned int, unsigned int>(i, points_to_vertices.find(std::pair<double, double>(meshes[meshes_i]->nodes[i].x, meshes[meshes_i]->nodes[i].y))->second));
+          std::map<std::pair<double, double>, unsigned int>::iterator it = points_to_vertices.find(std::pair<double, double>(meshes[meshes_i]->nodes[i].x, meshes[meshes_i]->nodes[i].y));
+          if(it != points_to_vertices.end())
+            vertices_to_vertices.insert(std::pair<unsigned int, unsigned int>(i, it->second));
           else
           {
-            vertices_to_vertices.insert(std::pair<unsigned int, unsigned int>(i, points_to_vertices.size()));
+            int new_i = points_to_vertices.size();
+            vertices_to_vertices.insert(std::pair<unsigned int, unsigned int>(i, new_i));
             points_to_vertices.insert(std::pair<std::pair<double, double>, unsigned int>(std::pair<double, double>(meshes[meshes_i]->nodes[i].x, meshes[meshes_i]->nodes[i].y), points_to_vertices.size()));
             std::ostringstream x_stream;
-            x_stream << meshes[meshes_i]->nodes[vertices_to_vertices.find(i)->second].x;
+            x_stream << meshes[meshes_i]->nodes[i].x;
 
             std::ostringstream y_stream;
-            y_stream << meshes[meshes_i]->nodes[vertices_to_vertices.find(i)->second].y;
+            y_stream << meshes[meshes_i]->nodes[i].y;
 
-            vertices.vertex().push_back(std::auto_ptr<XMLMesh::vertex>(new XMLMesh::vertex(x_stream.str(), y_stream.str(), i)));
+            vertices.v().push_back(std::auto_ptr<XMLMesh::v>(new XMLMesh::v(x_stream.str(), y_stream.str(), new_i)));
           }
-          subdomain.vertices()->i().push_back(vertices_to_vertices.find(i)->second);
+          if(!hasAllElements)
+            subdomain.vertices()->i().push_back(vertices_to_vertices.find(i)->second);
         }
 
         // save elements
         subdomain.elements().set(XMLSubdomains::subdomain::elements_type());
         for (int i = 0; i < meshes[meshes_i]->get_num_base_elements(); i++)
         {
-          e = meshes[meshes_i]->get_element_fast(i);
-          if (e->used)
+          e = &(meshes[meshes_i]->elements[i]);
+          if(!e->used)
+            continue;
+          if(!baseElementsSaved[e->id])
           {
-            if (e->is_triangle())
+            if(e->nvert == 3)
             {
-              bool present = false;
-              for(unsigned int elements_i = 0; elements_i < elements.element().size(); elements_i++)
-                if(dynamic_cast<XMLSubdomains::triangle_type*>(&elements.element().at(elements_i)) != NULL)
-                  if(dynamic_cast<XMLSubdomains::triangle_type*>(&elements.element().at(elements_i))->v1() == vertices_to_vertices.find(e->vn[0]->id)->second &&
-                    dynamic_cast<XMLSubdomains::triangle_type*>(&elements.element().at(elements_i))->v2() == vertices_to_vertices.find(e->vn[1]->id)->second &&
-                    dynamic_cast<XMLSubdomains::triangle_type*>(&elements.element().at(elements_i))->v3() == vertices_to_vertices.find(e->vn[2]->id)->second)
-                    {
-                      present = true;
-                      break;
-                    }
-
-              if(!present)
-                elements.element().push_back(XMLSubdomains::triangle_type(vertices_to_vertices.find(e->vn[0]->id)->second, vertices_to_vertices.find(e->vn[1]->id)->second, vertices_to_vertices.find(e->vn[2]->id)->second, meshes[meshes_i]->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->id));
+              elements.push_back(new XMLSubdomains::t_t(vertices_to_vertices.find(e->vn[0]->id)->second, vertices_to_vertices.find(e->vn[1]->id)->second, vertices_to_vertices.find(e->vn[2]->id)->second, meshes[meshes_i]->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->id));
             }
             else
             {
-              bool present = false;
-              for(unsigned int elements_i = 0; elements_i < elements.element().size(); elements_i++)
-                if(dynamic_cast<XMLSubdomains::quad_type*>(&elements.element().at(elements_i)) != NULL)
-                  if(dynamic_cast<XMLSubdomains::quad_type*>(&elements.element().at(elements_i))->v1() == vertices_to_vertices.find(e->vn[0]->id)->second &&
-                    dynamic_cast<XMLSubdomains::quad_type*>(&elements.element().at(elements_i))->v2() == vertices_to_vertices.find(e->vn[1]->id)->second &&
-                    dynamic_cast<XMLSubdomains::quad_type*>(&elements.element().at(elements_i))->v3() == vertices_to_vertices.find(e->vn[2]->id)->second &&
-                    dynamic_cast<XMLSubdomains::quad_type*>(&elements.element().at(elements_i))->v4() == vertices_to_vertices.find(e->vn[3]->id)->second)
-                    {
-                      present = true;
-                      break;
-                    }
-
-                if(!present)
-                  elements.element().push_back(XMLSubdomains::quad_type(vertices_to_vertices.find(e->vn[0]->id)->second, vertices_to_vertices.find(e->vn[1]->id)->second, vertices_to_vertices.find(e->vn[2]->id)->second, meshes[meshes_i]->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->id, vertices_to_vertices.find(e->vn[3]->id)->second));
-              }
-            subdomain.elements()->i().push_back(e->id);
+              elements.push_back(new XMLSubdomains::q_t(vertices_to_vertices.find(e->vn[0]->id)->second, vertices_to_vertices.find(e->vn[1]->id)->second, vertices_to_vertices.find(e->vn[2]->id)->second, meshes[meshes_i]->get_element_markers_conversion().get_user_marker(e->marker).marker.c_str(), e->id, vertices_to_vertices.find(e->vn[3]->id)->second));
+            }
+            baseElementsSaved[e->id] = true;
           }
+
+          if(!hasAllElements)
+            subdomain.elements()->i().push_back(e->id);
         }
 
-        // save boundary markers
-        subdomain.edges().set(XMLSubdomains::subdomain::edges_type());
+        // save boundary edge markers
+        subdomain.boundary_edges().set(XMLSubdomains::subdomain::boundary_edges_type());
+        bool has_inner_edges = false;
         for_all_base_elements(e, meshes[meshes_i])
-          for (unsigned i = 0; i < e->get_num_surf(); i++)
-            // Not internal internal markers.
-            if (meshes[meshes_i]->get_base_edge_node(e, i)->marker)
+        {
+          for (unsigned i = 0; i < e->get_nvert(); i++)
+          {
+            if(meshes[meshes_i]->get_base_edge_node(e, i)->bnd)
             {
               if(vertices_to_boundaries.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second))) == vertices_to_boundaries.end())
               {
-                unsigned int edge_i = edges.edge().size();
+                unsigned int edge_i = edges.ed().size();
                 vertices_to_boundaries.insert(std::pair<std::pair<unsigned int, unsigned int>, unsigned int>(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second)), edge_i));
-                edges.edge().push_back(XMLSubdomains::edge(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second, meshes[meshes_i]->boundary_markers_conversion.get_user_marker(meshes[meshes_i]->get_base_edge_node(e, i)->marker).marker.c_str(), edge_i));
+                edges.ed().push_back(XMLSubdomains::ed(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second, meshes[meshes_i]->boundary_markers_conversion.get_user_marker(meshes[meshes_i]->get_base_edge_node(e, i)->marker).marker.c_str(), edge_i));
               }
-              subdomain.edges()->i().push_back(vertices_to_boundaries.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second)))->second);
+              if(!hasAllElements)
+                subdomain.boundary_edges()->i().push_back(vertices_to_boundaries.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second)))->second);
             }
+            else
+              has_inner_edges = true;
+          }
+        }
+
+        if(has_inner_edges)
+        {
+          subdomain.inner_edges().set(XMLSubdomains::subdomain::inner_edges_type());
+          for_all_base_elements(e, meshes[meshes_i])
+            for (unsigned i = 0; i < e->get_nvert(); i++)
+            {
+              if(!meshes[meshes_i]->get_base_edge_node(e, i)->bnd)
+              {
+                if(vertices_to_boundaries.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second))) == vertices_to_boundaries.end())
+                {
+                  unsigned int edge_i = edges.ed().size();
+                  vertices_to_boundaries.insert(std::pair<std::pair<unsigned int, unsigned int>, unsigned int>(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second)), edge_i));
+                  edges.ed().push_back(XMLSubdomains::ed(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second, meshes[meshes_i]->boundary_markers_conversion.get_user_marker(meshes[meshes_i]->get_base_edge_node(e, i)->marker).marker.c_str(), edge_i));
+                }
+              if(!hasAllElements)
+                subdomain.inner_edges()->i().push_back(vertices_to_boundaries.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second)))->second);
+              }
+            }
+        }
 
         // save curved edges
         for_all_base_elements(e, meshes[meshes_i])
-          if (e->is_curved())
-            for (unsigned i = 0; i < e->get_num_surf(); i++)
-              if (e->cm->nurbs[i] != NULL && !is_twin_nurbs(e, i))
+          if(e->is_curved())
+            for (unsigned i = 0; i < e->get_nvert(); i++)
+              if(e->cm->nurbs[i] != NULL && !is_twin_nurbs(e, i))
                 if(vertices_to_curves.find(std::pair<unsigned int, unsigned int>(std::min(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second), std::max(vertices_to_vertices.find(e->vn[i]->id)->second, vertices_to_vertices.find(e->vn[e->next_vert(i)]->id)->second))) == vertices_to_curves.end())
                 {
                   if(e->cm->nurbs[i]->arc)
@@ -592,21 +750,28 @@ namespace Hermes
 
         // save refinements
         for(unsigned int refinement_i = 0; refinement_i < meshes[meshes_i]->refinements.size(); refinement_i++)
-          refinements.refinement().push_back(XMLMesh::refinement(meshes[meshes_i]->refinements[refinement_i].first, meshes[meshes_i]->refinements[refinement_i].second));
+          refinements.ref().push_back(XMLMesh::ref(meshes[meshes_i]->refinements[refinement_i].first, meshes[meshes_i]->refinements[refinement_i].second));
 
         subdomain.refinements().set(refinements);
         subdomains.subdomain().push_back(subdomain);
       }
 
+      delete [] baseElementsSaved;
 
-      XMLSubdomains::domain xmldomain(vertices, elements, edges, subdomains);
+      std::sort (elements.begin(), elements.end(), elementCompare);
+
+      XMLSubdomains::elements_type elementsToPass;
+      for(int i = 0; i < elements.size(); i++)
+        elementsToPass.el().push_back(*elements[i]);
+
+      XMLSubdomains::domain xmldomain(vertices, elementsToPass, edges, subdomains);
       xmldomain.curves().set(curves);
 
-      std::string mesh_schema_location(H2D_XML_SCHEMAS_DIRECTORY);
+      std::string mesh_schema_location(Hermes2DApi.get_text_param_value(xmlSchemasDirPath));
       mesh_schema_location.append("/mesh_h2d_xml.xsd");
       ::xml_schema::namespace_info namespace_info_mesh("XMLMesh", mesh_schema_location);
 
-      std::string domain_schema_location(H2D_XML_SCHEMAS_DIRECTORY);
+      std::string domain_schema_location(Hermes2DApi.get_text_param_value(xmlSchemasDirPath));
       domain_schema_location.append("/subdomains_h2d_xml.xsd");
       ::xml_schema::namespace_info namespace_info_domain("XMLSubdomains", domain_schema_location);
 
@@ -615,7 +780,8 @@ namespace Hermes
       namespace_info_map.insert(std::pair<std::basic_string<char>, xml_schema::namespace_info>("domain", namespace_info_domain));
 
       std::ofstream out(filename);
-      XMLSubdomains::domain_(out, xmldomain, namespace_info_map);
+      ::xml_schema::flags parsing_flags = ::xml_schema::flags::base;
+      XMLSubdomains::domain_(out, xmldomain, namespace_info_map, "UTF-8", parsing_flags);
       out.close();
 
       return true;
@@ -626,13 +792,17 @@ namespace Hermes
       try
       {
         // Variables //
-        unsigned int variables_count = parsed_xml_mesh->variables().present() ? parsed_xml_mesh->variables()->variable().size() : 0;
+        unsigned int variables_count = parsed_xml_mesh->variables().present() ? parsed_xml_mesh->variables()->var().size() : 0;
         std::map<std::string, double> variables;
         for (unsigned int variables_i = 0; variables_i < variables_count; variables_i++)
-          variables.insert(std::make_pair<std::string, double>(parsed_xml_mesh->variables()->variable().at(variables_i).name(), parsed_xml_mesh->variables()->variable().at(variables_i).value()));
+#ifdef _MSC_VER
+          variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_mesh->variables()->var().at(variables_i).name(), (double&&)parsed_xml_mesh->variables()->var().at(variables_i).value()));
+#else
+          variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_mesh->variables()->var().at(variables_i).name(), parsed_xml_mesh->variables()->var().at(variables_i).value()));
+#endif
 
         // Vertices //
-        int vertices_count = parsed_xml_mesh->vertices().vertex().size();
+        int vertices_count = parsed_xml_mesh->vertices().v().size();
 
         // Initialize mesh.
         int size = HashTable::H2D_DEFAULT_HASH_SIZE;
@@ -652,11 +822,11 @@ namespace Hermes
           node->next_hash = NULL;
 
           // variables matching.
-          std::string x = parsed_xml_mesh->vertices().vertex().at(vertex_i).x();
-          std::string y = parsed_xml_mesh->vertices().vertex().at(vertex_i).y();
+          std::string x = parsed_xml_mesh->vertices().v().at(vertex_i).x();
+          std::string y = parsed_xml_mesh->vertices().v().at(vertex_i).y();
 
           // insert into the map.
-          vertex_is.insert(std::pair<unsigned int, unsigned int>(parsed_xml_mesh->vertices().vertex().at(vertex_i).i(), vertex_i));
+          vertex_is.insert(std::pair<unsigned int, unsigned int>(parsed_xml_mesh->vertices().v().at(vertex_i).i(), vertex_i));
 
           double x_value;
           double y_value;
@@ -685,10 +855,10 @@ namespace Hermes
               int dot_position = strchr(x.c_str(), '.') == NULL ? -1 : strchr(x.c_str(), '.') - x.c_str();
               for(int i = 0; i < dot_position; i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
               for(int i = dot_position + 1; i < x.length(); i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
               x_value = std::strtod(x.c_str(), NULL);
             }
 
@@ -701,10 +871,10 @@ namespace Hermes
                 int dot_position = strchr(y.c_str(), '.') == NULL ? -1 : strchr(y.c_str(), '.') - y.c_str();
                 for(int i = 0; i < dot_position; i++)
                   if(strncmp(y.c_str() + i, "0", 1) != 0)
-                    error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_i + 1);
+                    throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_i + 1);
                 for(int i = dot_position + 1; i < y.length(); i++)
                   if(strncmp(y.c_str() + i, "0", 1) != 0)
-                    error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_i + 1);
+                    throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_i + 1);
                 y_value = std::strtod(y.c_str(), NULL);
               }
 
@@ -715,51 +885,53 @@ namespace Hermes
         mesh->ntopvert = vertices_count;
 
         // Elements //
-        unsigned int element_count = parsed_xml_mesh->elements().element().size();
+        unsigned int element_count = parsed_xml_mesh->elements().el().size();
         mesh->nbase = mesh->nactive = mesh->ninitial = element_count;
 
         Element* e;
         for (int element_i = 0; element_i < element_count; element_i++)
         {
-          XMLMesh::mesh::elements_type::element_type* element = &parsed_xml_mesh->elements().element().at(element_i);
+          XMLMesh::mesh::elements_type::el_type* element = &parsed_xml_mesh->elements().el().at(element_i);
 
           // Trim whitespaces.
-          unsigned int begin = element->marker().find_first_not_of(" \t\n");
-          unsigned int end = element->marker().find_last_not_of(" \t\n");
-          element->marker().erase(end + 1, element->marker().length());
-          element->marker().erase(0, begin);
+          unsigned int begin = element->m().find_first_not_of(" \t\n");
+          unsigned int end = element->m().find_last_not_of(" \t\n");
+          element->m().erase(end + 1, element->m().length());
+          element->m().erase(0, begin);
 
-          mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, element->marker());
+          mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, element->m());
 
-          if(dynamic_cast<XMLMesh::quad_type*>(element) != NULL)
-            e = mesh->create_quad(mesh->element_markers_conversion.get_internal_marker(element->marker()).marker,
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::quad_type*>(element)->v1())->second],
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::quad_type*>(element)->v2())->second],
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::quad_type*>(element)->v3())->second],
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::quad_type*>(element)->v4())->second],
+          XMLMesh::q_t* el_q = dynamic_cast<XMLMesh::q_t*>(element);
+          XMLMesh::t_t* el_t = dynamic_cast<XMLMesh::t_t*>(element);
+          if(el_q != NULL)
+            e = mesh->create_quad(mesh->element_markers_conversion.get_internal_marker(element->m()).marker,
+            &mesh->nodes[vertex_is.find(el_q->v1())->second],
+            &mesh->nodes[vertex_is.find(el_q->v2())->second],
+            &mesh->nodes[vertex_is.find(el_q->v3())->second],
+            &mesh->nodes[vertex_is.find(el_q->v4())->second],
             NULL);
-          else
-            e = mesh->create_triangle(mesh->element_markers_conversion.get_internal_marker(element->marker()).marker,
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::triangle_type*>(element)->v1())->second],
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::triangle_type*>(element)->v2())->second],
-            &mesh->nodes[vertex_is.find(dynamic_cast<XMLMesh::triangle_type*>(element)->v3())->second],
+          if(el_t != NULL)
+            e = mesh->create_triangle(mesh->element_markers_conversion.get_internal_marker(element->m()).marker,
+            &mesh->nodes[vertex_is.find(el_t->v1())->second],
+            &mesh->nodes[vertex_is.find(el_t->v2())->second],
+            &mesh->nodes[vertex_is.find(el_t->v3())->second],
             NULL);
         }
 
         // Boundaries //
-        unsigned int edges_count = parsed_xml_mesh->edges().edge().size();
+        unsigned int edges_count = parsed_xml_mesh->edges().ed().size();
 
         Node* en;
         for (unsigned int edge_i = 0; edge_i < edges_count; edge_i++)
         {
-          int v1 = vertex_is.find(parsed_xml_mesh->edges().edge().at(edge_i).v1())->second;
-          int v2 = vertex_is.find(parsed_xml_mesh->edges().edge().at(edge_i).v2())->second;
+          int v1 = vertex_is.find(parsed_xml_mesh->edges().ed().at(edge_i).v1())->second;
+          int v2 = vertex_is.find(parsed_xml_mesh->edges().ed().at(edge_i).v2())->second;
 
           en = mesh->peek_edge_node(v1, v2);
-          if (en == NULL)
-            error("Boundary data #%d: edge %d-%d does not exist", edge_i, v1, v2);
+          if(en == NULL)
+            throw Hermes::Exceptions::MeshLoadFailureException("Boundary data #%d: edge %d-%d does not exist.", edge_i, v1, v2);
 
-          std::string edge_marker = parsed_xml_mesh->edges().edge().at(edge_i).marker();
+          std::string edge_marker = parsed_xml_mesh->edges().ed().at(edge_i).m();
 
           // Trim whitespaces.
           unsigned int begin = edge_marker.find_first_not_of(" \t\n");
@@ -776,7 +948,7 @@ namespace Hermes
 
           // This is extremely important, as in DG, it is assumed that negative boundary markers are reserved
           // for the inner edges.
-          if (marker > 0)
+          if(marker > 0)
           {
             mesh->nodes[v1].bnd = 1;
             mesh->nodes[v2].bnd = 1;
@@ -786,8 +958,8 @@ namespace Hermes
 
         // check that all boundary edges have a marker assigned
         for_all_edge_nodes(en, mesh)
-          if (en->ref < 2 && en->marker == 0)
-            warn("Boundary edge node does not have a boundary marker");
+          if(en->ref < 2 && en->marker == 0)
+            this->warn("Boundary edge node does not have a boundary marker.");
 
         // Curves //
         // Arcs & NURBSs //
@@ -822,9 +994,9 @@ namespace Hermes
           for (unsigned int node_i = 0; node_i < 2; node_i++)
           {
             Element* e = en->elem[node_i];
-            if (e == NULL) continue;
+            if(e == NULL) continue;
 
-            if (e->cm == NULL)
+            if(e->cm == NULL)
             {
               e->cm = new CurvMap;
               memset(e->cm, 0, sizeof(CurvMap));
@@ -833,11 +1005,11 @@ namespace Hermes
             }
 
             int idx = -1;
-            for (unsigned j = 0; j < e->get_num_surf(); j++)
-              if (e->en[j] == en) { idx = j; break; }
+            for (unsigned j = 0; j < e->get_nvert(); j++)
+              if(e->en[j] == en) { idx = j; break; }
               assert(idx >= 0);
 
-              if (e->vn[idx]->id == p1)
+              if(e->vn[idx]->id == p1)
               {
                 e->cm->nurbs[idx] = nurbs;
                 nurbs->ref++;
@@ -849,36 +1021,39 @@ namespace Hermes
                 nurbs_rev->ref++;
               }
           }
-          if (!nurbs->ref) delete nurbs;
+          if(!nurbs->ref) delete nurbs;
         }
 
         // update refmap coeffs of curvilinear elements
         for_all_elements(e, mesh)
-          if (e->cm != NULL)
+          if(e->cm != NULL)
             e->cm->update_refmap_coeffs(e);
-
       }
       catch (const xml_schema::exception& e)
       {
-        std::cerr << e << std::endl;
-        std::exit(1);
+        throw Hermes::Exceptions::MeshLoadFailureException(e.what());
       }
 
       return true;
     }
 
-    bool MeshReaderH2DXML::load(std::auto_ptr<XMLSubdomains::domain> & parsed_xml_domain, Mesh *mesh, std::map<unsigned int, unsigned int>& vertex_is, std::map<unsigned int, unsigned int>& element_is, std::map<unsigned int, unsigned int>& edge_is)
+    bool MeshReaderH2DXML::load(std::auto_ptr<XMLSubdomains::domain> & parsed_xml_domain, Mesh *mesh, int* vertex_is, int* element_is, int* edge_is)
     {
       try
       {
         // Variables //
-        unsigned int variables_count = parsed_xml_domain->variables().present() ? parsed_xml_domain->variables()->variable().size() : 0;
+        unsigned int variables_count = parsed_xml_domain->variables().present() ? parsed_xml_domain->variables()->var().size() : 0;
         std::map<std::string, double> variables;
         for (unsigned int variables_i = 0; variables_i < variables_count; variables_i++)
-          variables.insert(std::make_pair<std::string, double>(parsed_xml_domain->variables()->variable().at(variables_i).name(), parsed_xml_domain->variables()->variable().at(variables_i).value()));
+#ifdef _MSC_VER
+          variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_domain->variables()->var().at(variables_i).name(), (double&&)parsed_xml_domain->variables()->var().at(variables_i).value()));
+#else
+          variables.insert(std::make_pair<std::string, double>((std::string)parsed_xml_domain->variables()->var().at(variables_i).name(), parsed_xml_domain->variables()->var().at(variables_i).value()));
+#endif
+
 
         // Vertices //
-        int vertices_count = parsed_xml_domain->vertices().vertex().size();
+        int vertices_count = parsed_xml_domain->vertices().v().size();
 
         // Initialize mesh.
         int size = HashTable::H2D_DEFAULT_HASH_SIZE;
@@ -898,11 +1073,14 @@ namespace Hermes
           node->next_hash = NULL;
 
           // variables matching.
-          std::string x = parsed_xml_domain->vertices().vertex().at(vertex_i).x();
-          std::string y = parsed_xml_domain->vertices().vertex().at(vertex_i).y();
+          std::string x = parsed_xml_domain->vertices().v().at(vertex_i).x();
+          std::string y = parsed_xml_domain->vertices().v().at(vertex_i).y();
 
-          // insert into the map.
-          vertex_is.insert(std::pair<unsigned int, unsigned int>(parsed_xml_domain->vertices().vertex().at(vertex_i).i(), vertex_i));
+          if(parsed_xml_domain->vertices().v().at(vertex_i).i() > H2D_MAX_NODE_ID - 1)
+            throw Exceptions::MeshLoadFailureException("The index 'i' of vertex in the mesh file must be lower than %i.", H2D_MAX_NODE_ID);
+
+          // insert
+          vertex_is[parsed_xml_domain->vertices().v().at(vertex_i).i()] = vertex_i;
 
           double x_value;
           double y_value;
@@ -931,10 +1109,10 @@ namespace Hermes
               int dot_position = strchr(x.c_str(), '.') == NULL ? -1 : strchr(x.c_str(), '.') - x.c_str();
               for(int i = 0; i < dot_position; i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
               for(int i = dot_position + 1; i < x.length(); i++)
                 if(strncmp(x.c_str() + i, "0", 1) != 0)
-                  error("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
+                  throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the x coordinate of vertex no. %i.", vertex_i + 1);
               x_value = std::strtod(x.c_str(), NULL);
             }
 
@@ -947,10 +1125,10 @@ namespace Hermes
                 int dot_position = strchr(y.c_str(), '.') == NULL ? -1 : strchr(y.c_str(), '.') - y.c_str();
                 for(int i = 0; i < dot_position; i++)
                   if(strncmp(y.c_str() + i, "0", 1) != 0)
-                    error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_i + 1);
+                    throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_i + 1);
                 for(int i = dot_position + 1; i < y.length(); i++)
                   if(strncmp(y.c_str() + i, "0", 1) != 0)
-                    error("Wrong syntay in the y coordinate of vertey no. %i.", vertex_i + 1);
+                    throw Hermes::Exceptions::MeshLoadFailureException("Wrong syntax in the y coordinate of vertex no. %i.", vertex_i + 1);
                 y_value = std::strtod(y.c_str(), NULL);
               }
 
@@ -961,57 +1139,65 @@ namespace Hermes
         mesh->ntopvert = vertices_count;
 
         // Elements //
-        unsigned int element_count = parsed_xml_domain->elements().element().size();
+        unsigned int element_count = parsed_xml_domain->elements().el().size();
         mesh->nbase = mesh->nactive = mesh->ninitial = element_count;
 
         Element* e;
         for (int element_i = 0; element_i < element_count; element_i++)
         {
-          XMLSubdomains::domain::elements_type::element_type* element = &parsed_xml_domain->elements().element().at(element_i);
+          XMLSubdomains::domain::elements_type::el_type* element = &parsed_xml_domain->elements().el().at(element_i);
 
-          // insert into the map.
-          element_is.insert(std::pair<unsigned int, unsigned int>(parsed_xml_domain->elements().element().at(element_i).i(), element_i));
+          // insert.
+          if(parsed_xml_domain->elements().el().at(element_i).i() > H2D_MAX_NODE_ID - 1)
+            throw Exceptions::MeshLoadFailureException("The index 'i' of element in the mesh file must be lower than %i.", H2D_MAX_NODE_ID);
+
+          element_is[parsed_xml_domain->elements().el().at(element_i).i()] = element_i;
 
           // Trim whitespaces.
-          unsigned int begin = element->marker().find_first_not_of(" \t\n");
-          unsigned int end = element->marker().find_last_not_of(" \t\n");
-          element->marker().erase(end + 1, element->marker().length());
-          element->marker().erase(0, begin);
+          unsigned int begin = element->m().find_first_not_of(" \t\n");
+          unsigned int end = element->m().find_last_not_of(" \t\n");
+          element->m().erase(end + 1, element->m().length());
+          element->m().erase(0, begin);
 
-          mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, element->marker());
+          mesh->element_markers_conversion.insert_marker(mesh->element_markers_conversion.min_marker_unused, element->m());
 
-          if(dynamic_cast<XMLSubdomains::quad_type*>(element) != NULL)
-            e = mesh->create_quad(mesh->element_markers_conversion.get_internal_marker(element->marker()).marker,
-            &mesh->nodes[dynamic_cast<XMLSubdomains::quad_type*>(element)->v1()],
-            &mesh->nodes[dynamic_cast<XMLSubdomains::quad_type*>(element)->v2()],
-            &mesh->nodes[dynamic_cast<XMLSubdomains::quad_type*>(element)->v3()],
-            &mesh->nodes[dynamic_cast<XMLSubdomains::quad_type*>(element)->v4()],
+          XMLSubdomains::q_t* el_q = dynamic_cast<XMLSubdomains::q_t*>(element);
+          XMLSubdomains::t_t* el_t = dynamic_cast<XMLSubdomains::t_t*>(element);
+          if(el_q != NULL)
+            e = mesh->create_quad(mesh->element_markers_conversion.get_internal_marker(element->m()).marker,
+            &mesh->nodes[el_q->v1()],
+            &mesh->nodes[el_q->v2()],
+            &mesh->nodes[el_q->v3()],
+            &mesh->nodes[el_q->v4()],
             NULL);
-          else
-            e = mesh->create_triangle(mesh->element_markers_conversion.get_internal_marker(element->marker()).marker,
-            &mesh->nodes[dynamic_cast<XMLSubdomains::triangle_type*>(element)->v1()],
-            &mesh->nodes[dynamic_cast<XMLSubdomains::triangle_type*>(element)->v2()],
-            &mesh->nodes[dynamic_cast<XMLSubdomains::triangle_type*>(element)->v3()],
+          if(el_t != NULL)
+            e = mesh->create_triangle(mesh->element_markers_conversion.get_internal_marker(element->m()).marker,
+            &mesh->nodes[el_t->v1()],
+            &mesh->nodes[el_t->v2()],
+            &mesh->nodes[el_t->v3()],
             NULL);
         }
 
         // Boundaries //
-        unsigned int edges_count = parsed_xml_domain->edges().edge().size();
+        unsigned int edges_count = parsed_xml_domain->edges().ed().size();
 
         Node* en;
         for (unsigned int edge_i = 0; edge_i < edges_count; edge_i++)
         {
-          int v1 = parsed_xml_domain->edges().edge().at(edge_i).v1();
-          int v2 = parsed_xml_domain->edges().edge().at(edge_i).v2();
+          int v1 = parsed_xml_domain->edges().ed().at(edge_i).v1();
+          int v2 = parsed_xml_domain->edges().ed().at(edge_i).v2();
 
-          // insert into the map.
-          edge_is.insert(std::pair<unsigned int, unsigned int>(parsed_xml_domain->edges().edge().at(edge_i).i(), edge_i));
+          // insert
+          if(parsed_xml_domain->edges().ed().at(edge_i).i() > H2D_MAX_NODE_ID - 1)
+            throw Exceptions::MeshLoadFailureException("The index 'i' of edge in the mesh file must be lower than %i.", H2D_MAX_NODE_ID);
+
+          edge_is[edge_i] = parsed_xml_domain->edges().ed().at(edge_i).i();
 
           en = mesh->peek_edge_node(v1, v2);
-          if (en == NULL)
-            error("Boundary data #%d: edge %d-%d does not exist", edge_i, v1, v2);
+          if(en == NULL)
+            throw Hermes::Exceptions::MeshLoadFailureException("Boundary data #%d: edge %d-%d does not exist.", edge_i, v1, v2);
 
-          std::string edge_marker = parsed_xml_domain->edges().edge().at(edge_i).marker();
+          std::string edge_marker = parsed_xml_domain->edges().ed().at(edge_i).m();
 
           // Trim whitespaces.
           unsigned int begin = edge_marker.find_first_not_of(" \t\n");
@@ -1028,7 +1214,7 @@ namespace Hermes
 
           // This is extremely important, as in DG, it is assumed that negative boundary markers are reserved
           // for the inner edges.
-          if (marker > 0)
+          if(marker > 0)
           {
             mesh->nodes[v1].bnd = 1;
             mesh->nodes[v2].bnd = 1;
@@ -1038,8 +1224,8 @@ namespace Hermes
 
         // check that all boundary edges have a marker assigned
         for_all_edge_nodes(en, mesh)
-          if (en->ref < 2 && en->marker == 0)
-            warn("Boundary edge node does not have a boundary marker");
+          if(en->ref < 2 && en->marker == 0)
+            this->warn("Boundary edge node does not have a boundary marker.");
 
         // Curves //
         // Arcs & NURBSs //
@@ -1056,7 +1242,6 @@ namespace Hermes
           Nurbs* nurbs;
           if(curves_i < arc_count)
           {
-
             // read the end point indices
             p1 = parsed_xml_domain->curves()->arc().at(curves_i).v1();
             p2 = parsed_xml_domain->curves()->arc().at(curves_i).v2();
@@ -1075,9 +1260,9 @@ namespace Hermes
           for (unsigned int node_i = 0; node_i < 2; node_i++)
           {
             Element* e = en->elem[node_i];
-            if (e == NULL) continue;
+            if(e == NULL) continue;
 
-            if (e->cm == NULL)
+            if(e->cm == NULL)
             {
               e->cm = new CurvMap;
               memset(e->cm, 0, sizeof(CurvMap));
@@ -1086,11 +1271,11 @@ namespace Hermes
             }
 
             int idx = -1;
-            for (unsigned j = 0; j < e->get_num_surf(); j++)
-              if (e->en[j] == en) { idx = j; break; }
+            for (unsigned j = 0; j < e->get_nvert(); j++)
+              if(e->en[j] == en) { idx = j; break; }
               assert(idx >= 0);
 
-              if (e->vn[idx]->id == p1)
+              if(e->vn[idx]->id == p1)
               {
                 e->cm->nurbs[idx] = nurbs;
                 nurbs->ref++;
@@ -1102,33 +1287,39 @@ namespace Hermes
                 nurbs_rev->ref++;
               }
           }
-          if (!nurbs->ref) delete nurbs;
+          if(!nurbs->ref) delete nurbs;
         }
 
         // update refmap coeffs of curvilinear elements
         for_all_elements(e, mesh)
-          if (e->cm != NULL)
+          if(e->cm != NULL)
             e->cm->update_refmap_coeffs(e);
-
       }
       catch (const xml_schema::exception& e)
       {
-        std::cerr << e << std::endl;
-        std::exit(1);
+        throw Hermes::Exceptions::MeshLoadFailureException(e.what());
       }
 
       return true;
     }
 
     template<typename T>
-    Nurbs* MeshReaderH2DXML::load_arc(Mesh *mesh, std::auto_ptr<T>& parsed_xml_entity, int id, Node** en, int p1, int p2)
+    Nurbs* MeshReaderH2DXML::load_arc(Mesh *mesh, std::auto_ptr<T>& parsed_xml_entity, int id, Node** en, int p1, int p2, bool skip_check)
     {
       Nurbs* nurbs = new Nurbs;
       nurbs->arc = true;
 
       *en = mesh->peek_edge_node(p1, p2);
-      if (*en == NULL)
-        error("Curve #%d: edge %d-%d does not exist.", id, p1, p2);
+
+      parsed_xml_entity.get();
+
+      if(*en == NULL)
+      {
+        if(!skip_check)
+          throw Hermes::Exceptions::MeshLoadFailureException("Curve #%d: edge %d-%d does not exist.", id, p1, p2);
+        else
+          return NULL;
+      }
 
       // degree of an arc == 2.
       nurbs->degree = 2;
@@ -1169,17 +1360,23 @@ namespace Hermes
     }
 
     template<typename T>
-    Nurbs* MeshReaderH2DXML::load_nurbs(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2)
+    Nurbs* MeshReaderH2DXML::load_nurbs(Mesh *mesh, std::auto_ptr<T> & parsed_xml_entity, int id, Node** en, int p1, int p2, bool skip_check)
     {
       Nurbs* nurbs = new Nurbs;
       nurbs->arc = false;
 
       *en = mesh->peek_edge_node(p1, p2);
-      if (*en == NULL)
-        error("Curve #%d: edge %d-%d does not exist.", id, p1, p2);
+
+      if(*en == NULL)
+      {
+        if(!skip_check)
+          throw Hermes::Exceptions::MeshLoadFailureException("Curve #%d: edge %d-%d does not exist.", id, p1, p2);
+        else
+          return NULL;
+      }
 
       // degree of curved edge
-      nurbs->degree = parsed_xml_entity->curves()->NURBS().at(id).degree();
+      nurbs->degree = parsed_xml_entity->curves()->NURBS().at(id).deg();
 
       // get the number of control points
       int inner = parsed_xml_entity->curves()->NURBS().at(id).inner_point().size();
@@ -1207,8 +1404,8 @@ namespace Hermes
       inner = parsed_xml_entity->curves()->NURBS().at(id).knot().size();
       nurbs->nk = nurbs->degree + nurbs->np + 1;
       int outer = nurbs->nk - inner;
-      if ((outer & 1) == 1)
-        error("Curve #%d: incorrect number of knot points.", id);
+      if((outer & 1) == 1)
+        throw Hermes::Exceptions::MeshLoadFailureException("Curve #%d: incorrect number of knot points.", id);
 
       // knot vector is completed by 0.0 on the left and by 1.0 on the right
       nurbs->kv = new double[nurbs->nk];
@@ -1216,7 +1413,7 @@ namespace Hermes
       for (int i = 0; i < outer/2; i++)
         nurbs->kv[i] = 0.0;
 
-      if (inner > 0)
+      if(inner > 0)
         for (int i = outer/2; i < inner + outer/2; i++)
           nurbs->kv[i] = parsed_xml_entity->curves()->NURBS().at(id).knot().at(i - (outer/2)).value();
 

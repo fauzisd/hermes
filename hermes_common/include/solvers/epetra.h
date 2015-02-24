@@ -23,6 +23,7 @@
 #define __HERMES_COMMON_SOLVER_EPETRA_H_
 #include "config.h"
 #ifdef HAVE_EPETRA
+#define EPETRA_NO_64BIT_GLOBAL_INDICES
 #include "matrix.h"
 #include <Epetra_SerialComm.h>
 #include <Epetra_Map.h>
@@ -74,7 +75,7 @@ namespace Hermes
       virtual void multiply_with_vector(Scalar* vector_in, Scalar* vector_out);
       virtual void add_as_block(unsigned int i, unsigned int j, EpetraMatrix<Scalar>* mat);
       virtual void add(unsigned int m, unsigned int n, Scalar **mat, int *rows, int *cols);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
       virtual unsigned int get_matrix_size() const;
       virtual unsigned int get_nnz() const;
       virtual double get_fill_in() const;
@@ -84,7 +85,7 @@ namespace Hermes
       Epetra_CrsGraph *grph;
       Epetra_CrsMatrix *mat;
       /// \brief Imaginary part of the matrix, mat holds the real part.
-      Epetra_CrsMatrix *mat_im;		
+      Epetra_CrsMatrix *mat_im;
       bool owner;
 
       friend class Hermes::Solvers::AmesosSolver<Scalar>;
@@ -113,7 +114,7 @@ namespace Hermes
       virtual void add(unsigned int n, unsigned int *idx, Scalar *y);
       virtual void add_vector(Vector<Scalar>* vec);
       virtual void add_vector(Scalar* vec);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
 
     protected:
       Epetra_BlockMap *std_map;

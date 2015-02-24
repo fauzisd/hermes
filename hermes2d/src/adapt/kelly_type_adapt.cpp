@@ -18,17 +18,30 @@ namespace Hermes
 {
   namespace Hermes2D
   {
+    static const int H2D_DG_INNER_EDGE_INT = -1234567;
+    static const std::string H2D_DG_INNER_EDGE = "-1234567";
+
     template<typename Scalar>
-    KellyTypeAdapt<Scalar>::KellyTypeAdapt(Hermes::vector< Space<Scalar>* > spaces_,
+    BasicKellyAdapt<Scalar>::ErrorEstimatorFormKelly::ErrorEstimatorFormKelly(int i, double const_by_laplacian) : KellyTypeAdapt<Scalar>::ErrorEstimatorForm(i, H2D_DG_INNER_EDGE), const_by_laplacian(const_by_laplacian)
+    {}
+
+    template<typename Scalar>
+    void KellyTypeAdapt<Scalar>::ErrorEstimatorForm::setAsInterface() 
+    { 
+      this->set_area(H2D_DG_INNER_EDGE);
+    }
+
+    template<typename Scalar>
+    KellyTypeAdapt<Scalar>::KellyTypeAdapt(Hermes::vector< Space<Scalar>* >& spaces_,
                                            bool ignore_visited_segments_,
                                            Hermes::vector<const InterfaceEstimatorScalingFunction*> interface_scaling_fns_,
-                                           Hermes::vector< ProjNormType > norms_)
+                                           Hermes::vector<ProjNormType > norms_)
       : Adapt<Scalar>(spaces_, norms_)
     {
       error_estimators_surf.reserve(this->num);
       error_estimators_vol.reserve(this->num);
 
-      if (interface_scaling_fns_.size() == 0)
+      if(interface_scaling_fns_.size() == 0)
       {
         interface_scaling_fns_.reserve(this->num);
         for (int i = 0; i < this->num; i++)
@@ -50,7 +63,7 @@ namespace Hermes
                                            ProjNormType norm_)
       : Adapt<Scalar>(space_, norm_)
     {
-      if (interface_scaling_fn_ == NULL)
+      if(interface_scaling_fn_ == NULL)
         interface_scaling_fns.push_back(new ScaleByElementDiameter);
       else
         interface_scaling_fns.push_back(interface_scaling_fn_);
@@ -78,8 +91,8 @@ namespace Hermes
     template<typename Scalar>
     void KellyTypeAdapt<Scalar>::add_error_estimator_vol(typename KellyTypeAdapt<Scalar>::ErrorEstimatorForm* form)
     {
-      error_if(form->i < 0 || form->i >= this->num,
-        "Invalid component number (%d), max. supported components: %d", form->i, H2D_MAX_COMPONENTS);
+      if(form->i < 0 || form->i >= this->num)
+        throw Exceptions::ValueException("component number", form->i, 0, this->num);
 
       form->adapt = this;
       this->error_estimators_vol.push_back(form);
@@ -88,8 +101,8 @@ namespace Hermes
     template<typename Scalar>
     void KellyTypeAdapt<Scalar>::add_error_estimator_surf(typename KellyTypeAdapt<Scalar>::ErrorEstimatorForm* form)
     {
-      error_if (form->i < 0 || form->i >= this->num,
-        "Invalid component number (%d), max. supported components: %d", form->i, H2D_MAX_COMPONENTS);
+      if(form->i < 0 || form->i >= this->num)
+        throw Exceptions::ValueException("component number", form->i, 0, this->num);
 
       form->adapt = this;
       this->error_estimators_surf.push_back(form);
@@ -100,13 +113,12 @@ namespace Hermes
                                                      Hermes::vector<double>* component_errors,
                                                      unsigned int error_flags)
     {
-      int n = slns.size();
-      error_if (n != this->num,
-        "Wrong number of solutions.");
+      if(slns.size() != this->num)
+        throw Hermes::Exceptions::LengthException(0, slns.size(), this->num);
 
-      Hermes::TimePeriod tmr;
+      this->tick();
 
-      for (int i = 0; i < n; i++)
+      for (int i = 0; i < this->num; i++)
       {
         this->sln[i] = slns[i];
         this->sln[i]->set_quad_2d(&g_quad_2d_std);
@@ -114,18 +126,19 @@ namespace Hermes
 
       this->have_coarse_solutions = true;
 
-      Stage<Scalar> stage;
+      const Mesh** meshes = new const Mesh*[this->num];
+      Transformable** fns = new Transformable*[this->num];
 
       this->num_act_elems = 0;
       for (int i = 0; i < this->num; i++)
       {
-        stage.meshes.push_back(this->sln[i]->get_mesh());
-        stage.fns.push_back(this->sln[i]);
+        meshes[i] = (this->sln[i]->get_mesh());
+        fns[i] = (this->sln[i]);
 
-        this->num_act_elems += stage.meshes[i]->get_num_active_elements();
-        int max = stage.meshes[i]->get_max_element_id();
+        this->num_act_elems += meshes[i]->get_num_active_elements();
+        int max = meshes[i]->get_max_element_id();
 
-        if (this->errors[i] != NULL) delete [] this->errors[i];
+        if(this->errors[i] != NULL) delete [] this->errors[i];
         this->errors[i] = new double[max];
         memset(this->errors[i], 0, sizeof(double) * max);
       }
@@ -133,50 +146,65 @@ namespace Hermes
       double total_norm = 0.0;
 
       bool calc_norm = false;
-      if ((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL ||
+      if((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL ||
         (error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_REL) calc_norm = true;
 
       double *norms = NULL;
-      if (calc_norm)
+      if(calc_norm)
       {
         norms = new double[this->num];
         memset(norms, 0, this->num * sizeof(double));
       }
 
       double *errors_components = new double[this->num];
-      memset(errors_components, 0.0, this->num * sizeof(double));
+      memset(errors_components, 0, this->num * sizeof(double));
       this->errors_squared_sum = 0.0;
       double total_error = 0.0;
 
-      bool bnd[4];
-      SurfPos surf_pos[4];
-      Element **ee;
-      Traverse trav;
+      bool bnd[H2D_MAX_NUMBER_EDGES];
+      SurfPos surf_pos[H2D_MAX_NUMBER_EDGES];
+      Traverse::State *ee;
+      Traverse trav(true);
 
       // Reset the e->visited status of each element of each mesh (most likely it will be set to true from
       // the latest assembling procedure).
-      if (ignore_visited_segments)
+      if(ignore_visited_segments)
       {
         for (int i = 0; i < this->num; i++)
         {
           Element* e;
-          for_all_active_elements(e, stage.meshes[i])
+          for_all_active_elements(e, meshes[i])
             e->visited = false;
         }
       }
 
       // Begin the multimesh traversal.
-      trav.begin(this->num, &(stage.meshes.front()), &(stage.fns.front()));
-      while ((ee = trav.get_next_state(bnd, surf_pos)) != NULL)
+      trav.begin(this->num, meshes, fns);
+      while ((ee = trav.get_next_state()) != NULL)
       {
+        bnd[0] = ee->bnd[0];
+        bnd[1] = ee->bnd[1];
+        bnd[2] = ee->bnd[2];
+        bnd[3] = ee->bnd[3];
+
+        surf_pos[0].marker = ee->rep->en[0]->marker;
+        surf_pos[1].marker = ee->rep->en[1]->marker;
+        surf_pos[2].marker = ee->rep->en[2]->marker;
+        surf_pos[3].marker = ee->rep->en[3]->marker;
+
+        surf_pos[0].surf_num = 0;
+        surf_pos[1].surf_num = 1;
+        surf_pos[2].surf_num = 2;
+        surf_pos[3].surf_num = 3;
+
         // Go through all solution components.
         for (int i = 0; i < this->num; i++)
         {
-          if (ee[i] == NULL)
+          if(ee->e[i] == NULL)
             continue;
 
           // Set maximum integration order for use in integrals, see limit_order()
-          update_limit_table(ee[i]->get_mode());
+          update_limit_table(ee->e[i]->get_mode());
 
           RefMap *rm = this->sln[i]->get_refmap();
 
@@ -188,11 +216,11 @@ namespace Hermes
             // Skip current error estimator if it is assigned to a different component or geometric area
             // different from that of the current active element.
 
-            if (error_estimators_vol[iest]->i != i)
+            if(error_estimators_vol[iest]->i != i)
               continue;
 
-            if (error_estimators_vol[iest]->area != HERMES_ANY)
-              if (!element_markers_conversion.get_internal_marker(error_estimators_vol[iest]->area).valid || element_markers_conversion.get_internal_marker(error_estimators_vol[iest]->area).marker != ee[i]->marker)
+            if(error_estimators_vol[iest]->area != HERMES_ANY)
+              if(!element_markers_conversion.get_internal_marker(error_estimators_vol[iest]->area).valid || element_markers_conversion.get_internal_marker(error_estimators_vol[iest]->area).marker != ee->e[i]->marker)
                 continue;
 
             err += eval_volumetric_estimator(error_estimators_vol[iest], rm);
@@ -201,22 +229,22 @@ namespace Hermes
           // Go through all surface error estimators (includes both interface and boundary est's).
           for (unsigned int iest = 0; iest < error_estimators_surf.size(); iest++)
           {
-            if (error_estimators_surf[iest]->i != i)
+            if(error_estimators_surf[iest]->i != i)
               continue;
 
-            for (int isurf = 0; isurf < ee[i]->get_num_surf(); isurf++)
+            for (int isurf = 0; isurf < ee->e[i]->get_nvert(); isurf++)
             {
-              if (bnd[isurf])   // Boundary
+              if(bnd[isurf])   // Boundary
               {
-                if (error_estimators_surf[iest]->area != HERMES_ANY)
+                if(error_estimators_surf[iest]->area != HERMES_ANY)
                 {
                   if(!boundary_markers_conversion.get_internal_marker(error_estimators_surf[iest]->area).valid)
                     continue;
                   int imarker = boundary_markers_conversion.get_internal_marker(error_estimators_surf[iest]->area).marker;
 
-                  if (imarker == H2D_DG_INNER_EDGE_INT)
+                  if(imarker == H2D_DG_INNER_EDGE_INT)
                     continue;
-                  if (imarker != surf_pos[isurf].marker)
+                  if(imarker != surf_pos[isurf].marker)
                     continue;
                 }
 
@@ -224,10 +252,10 @@ namespace Hermes
               }
               else              // Interface
               {
-                if (error_estimators_surf[iest]->area != H2D_DG_INNER_EDGE)
+                if(error_estimators_surf[iest]->area != H2D_DG_INNER_EDGE)
                   continue;
 
-                /* BEGIN COPY FROM DISCRETE_PROBLEM.CPP */
+                // BEGIN COPY FROM DISCRETE_PROBLEM.CPP
 
                 // 5 is for bits per page in the array.
                 LightArray<NeighborSearch<Scalar>*> neighbor_searches(5);
@@ -236,15 +264,15 @@ namespace Hermes
                 int ns_index;
 
                 // Determine the minimum mesh seq in this stage.
-                this->dp.min_dg_mesh_seq = 0;
-                for(int j = 0; j < this->num; j++)
-                  if(stage.meshes[j]->get_seq() < this->dp.min_dg_mesh_seq || j == 0)
-                    this->dp.min_dg_mesh_seq = stage.meshes[j]->get_seq();
+                unsigned int min_dg_mesh_seq = 0;
+                for(unsigned int j = 0; j < this->spaces.size(); j++)
+                  if(this->spaces[j]->get_mesh()->get_seq() < min_dg_mesh_seq || j == 0)
+                    min_dg_mesh_seq = this->spaces[j]->get_mesh()->get_seq();
 
-                ns_index = stage.meshes[i]->get_seq() - this->dp.min_dg_mesh_seq; // = 0 for single mesh
+                ns_index = meshes[i]->get_seq() - min_dg_mesh_seq; // = 0 for single mesh
 
                 // Initialize the NeighborSearches.
-                this->dp.init_neighbors(neighbor_searches, stage, isurf);
+                this->dp.init_neighbors(neighbor_searches, ee, min_dg_mesh_seq);
 
                 // Create a multimesh tree;
                 root = new NeighborNode(NULL, 0);
@@ -264,7 +292,7 @@ namespace Hermes
                     if(num_neighbors == 0)
                       num_neighbors = ns->n_neighbors;
                     if(ns->n_neighbors != num_neighbors)
-                      error("Num_neighbors of different NeighborSearches not matching in KellyTypeAdapt<Scalar>::calc_err_internal.");
+                      throw Hermes::Exceptions::Exception("Num_neighbors of different NeighborSearches not matching in KellyTypeAdapt<Scalar>::calc_err_internal.");
                   }
                 }
 
@@ -272,7 +300,7 @@ namespace Hermes
                 // by hanging nodes on the other side of the interface).
                 for (unsigned int neighbor = 0; neighbor < num_neighbors; neighbor++)
                 {
-                  if (ignore_visited_segments)
+                  if(ignore_visited_segments)
                   {
                     bool processed = true;
                     for(unsigned int j = 0; j < neighbor_searches.get_size(); j++)
@@ -283,7 +311,7 @@ namespace Hermes
                           break;
                         }
 
-                    if (processed) continue;
+                    if(processed) continue;
                   }
 
                   // We do not use cache_e and cache_jwt here.
@@ -302,14 +330,14 @@ namespace Hermes
                   // Push all the necessary transformations to all functions of this stage.
                   // The important thing is that the transformations to the current subelement are already there.
                   // Also store the current neighbor element and neighbor edge in neighb_el, neighbor_edge.
-                  for(unsigned int fns_i = 0; fns_i < stage.fns.size(); fns_i++)
+                  for(unsigned int fns_i = 0; fns_i < this->num; fns_i++)
                   {
-                    NeighborSearch<Scalar> *ns = neighbor_searches.get(stage.meshes[fns_i]->get_seq() - this->dp.min_dg_mesh_seq);
-                    if (ns->central_transformations.present(neighbor))
-                      ns->central_transformations.get(neighbor)->apply_on(stage.fns[fns_i]);
+                    NeighborSearch<Scalar> *ns = neighbor_searches.get(meshes[fns_i]->get_seq() - min_dg_mesh_seq);
+                    if(ns->central_transformations.present(neighbor))
+                      ns->central_transformations.get(neighbor)->apply_on(fns[fns_i]);
                   }
 
-                  /* END COPY FROM DISCRETE_PROBLEM.CPP */
+                  // END COPY FROM DISCRETE_PROBLEM.CPP
                   rm->force_transform(this->sln[i]->get_transform(), this->sln[i]->get_ctm());
 
                   // The estimate is multiplied by 0.5 in order to distribute the error equally onto
@@ -321,46 +349,46 @@ namespace Hermes
 
                   // Scale the error estimate by the scaling function dependent on the element diameter
                   // (use the central element's diameter).
-                  if (use_aposteriori_interface_scaling && interface_scaling_fns[i])
-                    if(!element_markers_conversion.get_user_marker(ee[i]->marker).valid)
-                      error("Marker not valid.");
+                  if(use_aposteriori_interface_scaling && interface_scaling_fns[i])
+                    if(!element_markers_conversion.get_user_marker(ee->e[i]->marker).valid)
+                      throw Hermes::Exceptions::Exception("Marker not valid.");
                     else
-                      central_err *= interface_scaling_fns[i]->value(ee[i]->get_diameter(), element_markers_conversion.get_user_marker(ee[i]->marker).marker);
+                      central_err *= interface_scaling_fns[i]->value(ee->e[i]->get_diameter(), element_markers_conversion.get_user_marker(ee->e[i]->marker).marker);
 
                   // In the case this edge will be ignored when calculating the error for the element on
                   // the other side, add the now computed error to that element as well.
-                  if (ignore_visited_segments)
+                  if(ignore_visited_segments)
                   {
                     Element *neighb = neighbor_searches.get(ns_index)->neighb_el;
 
                     // Scale the error estimate by the scaling function dependent on the element diameter
                     // (use the diameter of the element on the other side).
-                    if (use_aposteriori_interface_scaling && interface_scaling_fns[i])
+                    if(use_aposteriori_interface_scaling && interface_scaling_fns[i])
                       if(!element_markers_conversion.get_user_marker(neighb->marker).valid)
-                      error("Marker not valid.");
+                      throw Hermes::Exceptions::Exception("Marker not valid.");
                     else
                       neighb_err *= interface_scaling_fns[i]->value(neighb->get_diameter(), element_markers_conversion.get_user_marker(neighb->marker).marker);
 
                     errors_components[i] += central_err + neighb_err;
                     total_error += central_err + neighb_err;
-                    this->errors[i][ee[i]->id] += central_err;
+                    this->errors[i][ee->e[i]->id] += central_err;
                     this->errors[i][neighb->id] += neighb_err;
                   }
                   else
                     err += central_err;
 
-                  /* BEGIN COPY FROM DISCRETE_PROBLEM.CPP */
+                  // BEGIN COPY FROM DISCRETE_PROBLEM.CPP
 
                   // Clear the transformations from the RefMaps and all functions.
-                  for(unsigned int fns_i = 0; fns_i < stage.fns.size(); fns_i++)
-                    stage.fns[fns_i]->set_transform(neighbor_searches.get(stage.meshes[fns_i]->get_seq() - this->dp.min_dg_mesh_seq)->original_central_el_transform);
+                  for(unsigned int fns_i = 0; fns_i < this->num; fns_i++)
+                    fns[fns_i]->set_transform(neighbor_searches.get(meshes[fns_i]->get_seq() - min_dg_mesh_seq)->original_central_el_transform);
 
                   rm->set_transform(neighbor_searches.get(ns_index)->original_central_el_transform);
 
-                  /* END COPY FROM DISCRETE_PROBLEM.CPP */
+                  // END COPY FROM DISCRETE_PROBLEM.CPP
                 }
 
-                /* BEGIN COPY FROM DISCRETE_PROBLEM.CPP */
+                // BEGIN COPY FROM DISCRETE_PROBLEM.CPP
 
                 // Delete the multimesh tree;
                 delete root;
@@ -370,13 +398,12 @@ namespace Hermes
                   if(neighbor_searches.present(j))
                     delete neighbor_searches.get(j);
 
-                /* END COPY FROM DISCRETE_PROBLEM.CPP */
-
+                // END COPY FROM DISCRETE_PROBLEM.CPP
               }
             }
           }
 
-          if (calc_norm)
+          if(calc_norm)
           {
             double nrm = eval_solution_norm(this->norm_form[i][i], rm, this->sln[i]);
             norms[i] += nrm;
@@ -385,9 +412,9 @@ namespace Hermes
 
           errors_components[i] += err;
           total_error += err;
-          this->errors[i][ee[i]->id] += err;
+          this->errors[i][ee->e[i]->id] += err;
 
-          ee[i]->visited = true;
+          ee->e[i]->visited = true;
         }
       }
       trav.finish();
@@ -400,26 +427,26 @@ namespace Hermes
         {
           if((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_ABS)
             component_errors->push_back(sqrt(errors_components[i]));
-          else if ((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_REL)
+          else if((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_REL)
             component_errors->push_back(sqrt(errors_components[i]/norms[i]));
           else
           {
-            error("Unknown total error type (0x%x).", error_flags & this->HERMES_TOTAL_ERROR_MASK);
+            throw Hermes::Exceptions::Exception("Unknown total error type (0x%x).", error_flags & this->HERMES_TOTAL_ERROR_MASK);
             return -1.0;
           }
         }
       }
 
-      tmr.tick();
-      this->error_time = tmr.accumulated();
+      this->tick();
+      this->error_time = this->accumulated();
 
       // Make the error relative if needed.
-      if ((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL)
+      if((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL)
       {
         for (int i = 0; i < this->num; i++)
         {
           Element* e;
-          for_all_active_elements(e, stage.meshes[i])
+          for_all_active_elements(e, meshes[i])
             this->errors[i][e->id] /= norms[i];
         }
       }
@@ -429,25 +456,25 @@ namespace Hermes
       // Element error mask is used here, because this variable is used in the adapt()
       // function, where the processed error (sum of errors of processed element errors)
       // is matched to this variable.
-      if ((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL)
+      if((error_flags & this->HERMES_ELEMENT_ERROR_MASK) == HERMES_ELEMENT_ERROR_REL)
         this->errors_squared_sum /= total_norm;
 
       // Prepare an ordered list of elements according to an error.
-      this->fill_regular_queue(&(stage.meshes.front()));
+      this->fill_regular_queue(meshes);
       this->have_errors = true;
 
-      if (calc_norm)
+      if(calc_norm)
         delete [] norms;
       delete [] errors_components;
 
       // Return error value.
-      if ((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_ABS)
+      if((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_ABS)
         return sqrt(total_error);
-      else if ((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_REL)
+      else if((error_flags & this->HERMES_TOTAL_ERROR_MASK) == HERMES_TOTAL_ERROR_REL)
         return sqrt(total_error / total_norm);
       else
       {
-        error("Unknown total error type (0x%x).", error_flags & this->HERMES_TOTAL_ERROR_MASK);
+        throw Hermes::Exceptions::Exception("Unknown total error type (0x%x).", error_flags & this->HERMES_TOTAL_ERROR_MASK);
         return -1.0;
       }
     }
@@ -468,17 +495,17 @@ namespace Hermes
 
       Solution<Scalar>*sol = static_cast<Solution<Scalar>*>(sln);
       if(sol && sol->get_type() == HERMES_EXACT)
-        limit_order_nowarn(order);
+        limit_order_nowarn(order, rm->get_active_element()->get_mode());
       else
-        limit_order(order);
+        limit_order(order, rm->get_active_element()->get_mode());
 
       ou->free_ord(); delete ou;
       delete fake_e;
 
       // Evaluate the form.
       Quad2D* quad = sln->get_quad_2d();
-      double3* pt = quad->get_points(order);
-      int np = quad->get_num_points(order);
+      double3* pt = quad->get_points(order, sln->get_active_element()->get_mode());
+      int np = quad->get_num_points(order, sln->get_active_element()->get_mode());
 
       // Initialize geometry and jacobian*weights.
       Geom<double>* e = init_geom_vol(rm, order);
@@ -505,25 +532,30 @@ namespace Hermes
       // Determine the integration order.
       int inc = (this->sln[err_est_form->i]->get_num_components() == 2) ? 1 : 0;
 
-      Func<Hermes::Ord>** oi = new Func<Hermes::Ord>* [this->num];
+      Func<Hermes::Ord>** oi = new Func<Hermes::Ord>*[this->num];
       for (int i = 0; i < this->num; i++)
         oi[i] = init_fn_ord(this->sln[i]->get_fn_order() + inc);
 
       // Polynomial order of additional external functions.
-      ExtData<Hermes::Ord>* fake_ext = this->dp.init_ext_fns_ord(err_est_form->ext);
+      Func<Hermes::Ord>** fake_ext_fn = new Func<Hermes::Ord>*[err_est_form->ext.size()];
+      for (int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i] = init_fn_ord(err_est_form->ext[i]->get_fn_order());
 
       double fake_wt = 1.0;
       Geom<Hermes::Ord>* fake_e = init_geom_ord();
-      Hermes::Ord o = err_est_form->ord(1, &fake_wt, oi, oi[err_est_form->i], fake_e, fake_ext);
+
+      DiscontinuousFunc<Hermes::Ord> oi_i(oi[err_est_form->i], false, false);
+
+      Hermes::Ord o = err_est_form->ord(1, &fake_wt, oi, &oi_i, fake_e, fake_ext_fn);
       int order = rm->get_inv_ref_order();
       order += o.get_order();
 
-      limit_order(order);
+      limit_order(order, rm->get_active_element()->get_mode());
 
       // Clean up.
       for (int i = 0; i < this->num; i++)
       {
-        if (oi[i] != NULL)
+        if(oi[i] != NULL)
         {
           oi[i]->free_ord();
           delete oi[i];
@@ -531,13 +563,14 @@ namespace Hermes
       }
       delete [] oi;
       delete fake_e;
-      fake_ext->free_ord();
-      delete fake_ext;
+      for(int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i]->free_ord();
+      delete [] fake_ext_fn;
 
       // eval the form
       Quad2D* quad = this->sln[err_est_form->i]->get_quad_2d();
-      double3* pt = quad->get_points(order);
-      int np = quad->get_num_points(order);
+      double3* pt = quad->get_points(order, rm->get_active_element()->get_mode());
+      int np = quad->get_num_points(order, rm->get_active_element()->get_mode());
 
       // Initialize geometry and jacobian*weights
       Geom<double>* e = init_geom_vol(rm, order);
@@ -547,18 +580,27 @@ namespace Hermes
         jwt[i] = pt[i][2] * jac[i];
 
       // Function values.
-      Func<Scalar>** ui = new Func<Scalar>* [this->num];
+      Func<Scalar>** ui = new Func<Scalar>*[this->num];
 
       for (int i = 0; i < this->num; i++)
         ui[i] = init_fn(this->sln[i], order);
 
-      ExtData<Scalar>* ext = this->dp.init_ext_fns(err_est_form->ext, rm, order);
+      Func<Scalar>** ext_fn = new Func<Scalar>*[err_est_form->ext.size()];
+      for (unsigned i = 0; i < err_est_form->ext.size(); i++)
+      {
+        if(err_est_form->ext[i] != NULL)
+          ext_fn[i] = init_fn(err_est_form->ext[i], order);
+        else
+          ext_fn[i] = NULL;
+      }
 
-      Scalar res = volumetric_scaling_const * err_est_form->value(np, jwt, ui, ui[err_est_form->i], e, ext);
+      DiscontinuousFunc<Scalar> ui_i(ui[err_est_form->i], false, false);
+
+      Scalar res = volumetric_scaling_const * err_est_form->value(np, jwt, ui, &ui_i, e, ext_fn);
 
       for (int i = 0; i < this->num; i++)
       {
-        if (ui[i] != NULL)
+        if(ui[i] != NULL)
         {
           ui[i]->free_fn();
           delete ui[i];
@@ -566,11 +608,9 @@ namespace Hermes
       }
       delete [] ui;
 
-      if (ext != NULL)
-      {
-        ext->free();
-        delete ext;
-      }
+      for(int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i]->free_fn();
+      delete [] fake_ext_fn;
 
       e->free();
       delete e;
@@ -586,24 +626,27 @@ namespace Hermes
     {
       // Determine the integration order.
       int inc = (this->sln[err_est_form->i]->get_num_components() == 2) ? 1 : 0;
-      Func<Hermes::Ord>** oi = new Func<Hermes::Ord>* [this->num];
+      Func<Hermes::Ord>** oi = new Func<Hermes::Ord>*[this->num];
       for (int i = 0; i < this->num; i++)
         oi[i] = init_fn_ord(this->sln[i]->get_edge_fn_order(surf_pos->surf_num) + inc);
 
       // Polynomial order of additional external functions.
-      ExtData<Hermes::Ord>* fake_ext = this->dp.init_ext_fns_ord(err_est_form->ext, surf_pos->surf_num);
+      Func<Hermes::Ord>** fake_ext_fn = new Func<Hermes::Ord>*[err_est_form->ext.size()];
+      for (int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i] = init_fn_ord(err_est_form->ext[i]->get_fn_order());
 
       double fake_wt = 1.0;
       Geom<Hermes::Ord>* fake_e = init_geom_ord();
-      Hermes::Ord o = err_est_form->ord(1, &fake_wt, oi, oi[err_est_form->i], fake_e, fake_ext);
+      DiscontinuousFunc<Hermes::Ord> oi_i(oi[err_est_form->i], false, false);
+      Hermes::Ord o = err_est_form->ord(1, &fake_wt, oi, &oi_i, fake_e, fake_ext_fn);
       int order = rm->get_inv_ref_order();
       order += o.get_order();
 
-      limit_order(order);
+      limit_order(order, rm->get_active_element()->get_mode());
 
       // Clean up.
       for (int i = 0; i < this->num; i++)
-        if (oi[i] != NULL)
+        if(oi[i] != NULL)
         {
           oi[i]->free_ord();
           delete oi[i];
@@ -611,44 +654,53 @@ namespace Hermes
 
       delete [] oi;
       delete fake_e;
-      fake_ext->free_ord();
-      delete fake_ext;
+      for(int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i]->free_ord();
+      delete [] fake_ext_fn;
 
       // Evaluate the form.
       Quad2D* quad = this->sln[err_est_form->i]->get_quad_2d();
-      int eo = quad->get_edge_points(surf_pos->surf_num, order);
-      double3* pt = quad->get_points(eo);
-      int np = quad->get_num_points(eo);
+      int eo = quad->get_edge_points(surf_pos->surf_num, order, rm->get_active_element()->get_mode());
+      double3* pt = quad->get_points(eo, rm->get_active_element()->get_mode());
+      int np = quad->get_num_points(eo, rm->get_active_element()->get_mode());
 
       // Initialize geometry and jacobian*weights.
-      Geom<double>* e = init_geom_surf(rm, surf_pos, eo);
-      double3* tan = rm->get_tangent(surf_pos->surf_num, eo);
+      double3* tan;
+      Geom<double>* e = init_geom_surf(rm, surf_pos->surf_num, surf_pos->marker, eo, tan);
       double* jwt = new double[np];
       for(int i = 0; i < np; i++)
         jwt[i] = pt[i][2] * tan[i][2];
 
       // Function values
-      Func<Scalar>** ui = new Func<Scalar>* [this->num];
+      Func<Scalar>** ui = new Func<Scalar>*[this->num];
       for (int i = 0; i < this->num; i++)
         ui[i] = init_fn(this->sln[i], eo);
-      ExtData<Scalar>* ext = this->dp.init_ext_fns(err_est_form->ext, rm, eo);
+
+      Func<Scalar>** ext_fn = new Func<Scalar>*[err_est_form->ext.size()];
+      for (unsigned i = 0; i < err_est_form->ext.size(); i++)
+      {
+        if(err_est_form->ext[i] != NULL)
+          ext_fn[i] = init_fn(err_est_form->ext[i], order);
+        else
+          ext_fn[i] = NULL;
+      }
+
+      DiscontinuousFunc<Scalar> ui_i(ui[err_est_form->i], false, false);
 
       Scalar res = boundary_scaling_const *
-        err_est_form->value(np, jwt, ui, ui[err_est_form->i], e, ext);
+        err_est_form->value(np, jwt, ui, &ui_i, e, ext_fn);
 
       for (int i = 0; i < this->num; i++)
-        if (ui[i] != NULL)
+        if(ui[i] != NULL)
         {
           ui[i]->free_fn();
           delete ui[i];
         }
 
       delete [] ui;
-      if (ext != NULL)
-      {
-        ext->free();
-        delete ext;
-      }
+      for(int i = 0; i < err_est_form->ext.size(); i++)
+        fake_ext_fn[i]->free_fn();
+      delete [] fake_ext_fn;
 
       e->free();
       delete e;
@@ -672,29 +724,34 @@ namespace Hermes
         slns.push_back(this->sln[i]);
 
       // Determine integration order.
-      ExtData<Hermes::Ord>* fake_ui = this->dp.init_ext_fns_ord(slns, neighbor_searches);
-
-      // Polynomial order of additional external functions.
-      // ExtData<Hermes::Ord>* fake_ext = this->dp.init_ext_fns_ord(err_est_form->ext, nbs);
+      Func<Hermes::Ord>** fake_ext_fns = new Func<Hermes::Ord>*[err_est_form->ext.size()];
+      for (unsigned int j = 0; j < err_est_form->ext.size(); j++)
+      {
+        int inc = (err_est_form->ext[j]->get_num_components() == 2) ? 1 : 0;
+        int central_order = err_est_form->ext[j]->get_edge_fn_order(neighbor_searches.get(err_est_form->ext[j]->get_mesh()->get_seq())->active_edge) + inc;
+        int neighbor_order = err_est_form->ext[j]->get_edge_fn_order(neighbor_searches.get(err_est_form->ext[j]->get_mesh()->get_seq())->neighbor_edge.local_num_of_edge) + inc;
+        fake_ext_fns[j] = new DiscontinuousFunc<Hermes::Ord>(init_fn_ord(central_order), init_fn_ord(neighbor_order));
+      }
 
       // Polynomial order of geometric attributes (eg. for multiplication of a solution with coordinates, normals, etc.).
       Geom<Hermes::Ord>* fake_e = new InterfaceGeom<Hermes::Ord>(init_geom_ord(), nbs->neighb_el->marker, nbs->neighb_el->id, Hermes::Ord(nbs->neighb_el->get_diameter()));
       double fake_wt = 1.0;
-      Hermes::Ord o = err_est_form->ord(1, &fake_wt, fake_ui->fn, fake_ui->fn[err_est_form->i], fake_e, NULL);
+      DiscontinuousFunc<Hermes::Ord> fake_ext_fns_i(fake_ext_fns[err_est_form->i], false, false);
+      
+      Hermes::Ord o = err_est_form->ord(1, &fake_wt, fake_ext_fns, &fake_ext_fns_i, fake_e, NULL);
 
       int order = rm->get_inv_ref_order();
       order += o.get_order();
 
-      limit_order(order);
+      limit_order(order, rm->get_active_element()->get_mode());
 
       // Clean up.
-      if (fake_ui != NULL)
+      for (int i = 0; i < this->num; i++)
       {
-        for (int i = 0; i < this->num; i++)
-          delete fake_ui->fn[i];
-        fake_ui->free_ord();
-        delete fake_ui;
+        fake_ext_fns[i]->free_ord();
+        delete fake_ext_fns[i];
       }
+      delete [] fake_ext_fns;
 
       fake_e->free_ord();
       delete fake_e;
@@ -702,34 +759,33 @@ namespace Hermes
       //delete fake_ext;
 
       Quad2D* quad = this->sln[err_est_form->i]->get_quad_2d();
-      int eo = quad->get_edge_points(surf_pos->surf_num, order);
-      int np = quad->get_num_points(eo);
-      double3* pt = quad->get_points(eo);
+      int eo = quad->get_edge_points(surf_pos->surf_num, order, rm->get_active_element()->get_mode());
+      int np = quad->get_num_points(eo, rm->get_active_element()->get_mode());
+      double3* pt = quad->get_points(eo, rm->get_active_element()->get_mode());
 
       // Initialize geometry and jacobian*weights (do not use the NeighborSearch caching mechanism).
-      double3* tan = rm->get_tangent(surf_pos->surf_num, eo);
-      double* jwt = new double[np];
-      for(int i = 0; i < np; i++)
-        jwt[i] = pt[i][2] * tan[i][2];
-
-      Geom<double>* e = new InterfaceGeom<double>(init_geom_surf(rm, surf_pos, eo),
+      double3* tan;
+      Geom<double>* e = new InterfaceGeom<double>(init_geom_surf(rm, surf_pos->surf_num, surf_pos->marker, eo, tan),
                                                   nbs->neighb_el->marker,
                                                   nbs->neighb_el->id,
                                                   nbs->neighb_el->get_diameter());
 
+      double* jwt = new double[np];
+      for(int i = 0; i < np; i++)
+        jwt[i] = pt[i][2] * tan[i][2];
+
       // Function values.
-      ExtData<Scalar>* ui = this->dp.init_ext_fns(slns, neighbor_searches, order);
-      //ExtData<Scalar>* ext = this->dp.init_ext_fns(err_est_form->ext, nbs);
+      DiscontinuousFunc<Scalar>** ui = this->dp.init_ext_fns(slns, neighbor_searches, order, 0);
 
       Scalar res = interface_scaling_const *
-        err_est_form->value(np, jwt, ui->fn, ui->fn[err_est_form->i], e, NULL);
+        err_est_form->value(np, jwt, NULL, ui[err_est_form->i], e, NULL);
 
-      if (ui != NULL)
+      if(ui != NULL)
       {
-        ui->free();
-        delete ui;
+        for(unsigned int i = 0; i < slns.size(); i++)
+          ui[i]->free_fn();
+        delete [] ui;
       }
-      //if (ext != NULL) { ext->free(); delete ext; }
 
       e->free();
       delete e;

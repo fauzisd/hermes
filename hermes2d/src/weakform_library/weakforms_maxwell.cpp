@@ -26,12 +26,15 @@ namespace Hermes
         SymFlag sym,
         GeomType gt,
         int order_increase)
-        : MatrixFormVol<Scalar>(i, j, area, sym), idx_j(j), const_coeff(const_coeff),
+        : MatrixFormVol<Scalar>(i, j), idx_j(j), const_coeff(const_coeff),
         spline_coeff(c_spline), gt(gt),
         order_increase(order_increase)
       {
+        this->set_area(area);
+        this->setSymFlag(sym);
+
         // If spline is HERMES_DEFAULT_SPLINE, initialize it to be constant 1.0.
-        if (c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
+        if(c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
       }
       template<typename Scalar>
       DefaultJacobianMagnetostatics<Scalar>::DefaultJacobianMagnetostatics(int i, int j, Hermes::vector<std::string> areas,
@@ -40,35 +43,38 @@ namespace Hermes
         SymFlag sym,
         GeomType gt,
         int order_increase)
-        : MatrixFormVol<Scalar>(i, j, areas, sym), idx_j(j), const_coeff(const_coeff),
+        : MatrixFormVol<Scalar>(i, j), idx_j(j), const_coeff(const_coeff),
         spline_coeff(c_spline), gt(gt),
         order_increase(order_increase)
       {
+        this->set_areas(areas);
+        this->setSymFlag(sym);
+
         // If spline is HERMES_DEFAULT_SPLINE, initialize it to be constant 1.0.
-        if (c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
+        if(c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
       }
 
       template<typename Scalar>
       Scalar DefaultJacobianMagnetostatics<Scalar>::value(int n, double *wt, Func<Scalar> *u_ext[], Func<double> *u,
-        Func<double> *v, Geom<double> *e, ExtData<Scalar> *ext) const
+        Func<double> *v, Geom<double> *e, Func<Scalar> **ext) const
       {
         Scalar planar_part = 0;
         Scalar axisym_part = 0;
         for (int i = 0; i < n; i++)
         {
           Scalar B_i = sqrt(sqr(u_ext[idx_j]->dx[i]) + sqr(u_ext[idx_j]->dy[i]));
-          if (std::abs(B_i) > 1e-12)
+          if(std::abs(B_i) > 1e-12)
           {
             planar_part += wt[i] * const_coeff*spline_coeff->derivative(B_i) / B_i
               * (u_ext[idx_j]->dx[i] * u->dx[i] + u_ext[idx_j]->dy[i] * u->dy[i])
               * (u_ext[idx_j]->dx[i] * v->dx[i] + u_ext[idx_j]->dy[i] * v->dy[i]);
-            if (gt == HERMES_AXISYM_X)
+            if(gt == HERMES_AXISYM_X)
             {
               axisym_part += wt[i] * const_coeff*spline_coeff->derivative(B_i) / B_i / e->y[i]
               * (u_ext[idx_j]->dx[i] * u->dx[i] + u_ext[idx_j]->dy[i] * u->dy[i])
                 * u_ext[idx_j]->val[i] * v->dy[i];
             }
-            else if (gt == HERMES_AXISYM_Y)
+            else if(gt == HERMES_AXISYM_Y)
             {
               axisym_part += wt[i] * const_coeff*spline_coeff->derivative(B_i) / B_i / e->x[i]
               * (u_ext[idx_j]->dx[i] * u->dx[i] + u_ext[idx_j]->dy[i] * u->dy[i])
@@ -77,12 +83,12 @@ namespace Hermes
           }
           planar_part += wt[i] * const_coeff*spline_coeff->value(B_i)
             * (u->dx[i] * v->dx[i] + u->dy[i] * v->dy[i]);
-          if (gt == HERMES_AXISYM_X)
+          if(gt == HERMES_AXISYM_X)
           {
             axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->y[i]
             * u->val[i] * v->dy[i];
           }
-          else if (gt == HERMES_AXISYM_Y)
+          else if(gt == HERMES_AXISYM_Y)
           {
             axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->x[i]
             * u->val[i] * v->dx[i];
@@ -94,7 +100,7 @@ namespace Hermes
 
       template<typename Scalar>
       Ord DefaultJacobianMagnetostatics<Scalar>::ord(int n, double *wt, Func<Ord> *u_ext[], Func<Ord> *u, Func<Ord> *v,
-        Geom<Ord> *e, ExtData<Ord> *ext) const
+        Geom<Ord> *e, Func<Ord> **ext) const
       {
         Ord planar_part(0);
         for (int i = 0; i < n; i++)
@@ -114,38 +120,40 @@ namespace Hermes
       }
 
       template<typename Scalar>
-      MatrixFormVol<Scalar>* DefaultJacobianMagnetostatics<Scalar>::clone()
+      MatrixFormVol<Scalar>* DefaultJacobianMagnetostatics<Scalar>::clone() const
       {
         return new DefaultJacobianMagnetostatics(*this);
       }
-
 
       template<typename Scalar>
       DefaultResidualMagnetostatics<Scalar>::DefaultResidualMagnetostatics(int i, std::string area, Scalar const_coeff,
         CubicSpline* c_spline,
         GeomType gt,
         int order_increase)
-        : VectorFormVol<Scalar>(i, area), idx_i(i), const_coeff(const_coeff), spline_coeff(c_spline),
+        : VectorFormVol<Scalar>(i), idx_i(i), const_coeff(const_coeff), spline_coeff(c_spline),
         gt(gt), order_increase(order_increase)
       {
+        this->set_area(area);
         // If spline is HERMES_DEFAULT_SPLINE, initialize it to be constant 1.0.
-        if (c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
+        if(c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
       }
 
       template<typename Scalar>
       DefaultResidualMagnetostatics<Scalar>::DefaultResidualMagnetostatics(int i, Hermes::vector<std::string> areas, Scalar const_coeff,
         CubicSpline* c_spline,
         GeomType gt, int order_increase)
-        : VectorFormVol<Scalar>(i, areas), idx_i(i), const_coeff(const_coeff), spline_coeff(c_spline), gt(gt),
+        : VectorFormVol<Scalar>(i), idx_i(i), const_coeff(const_coeff), spline_coeff(c_spline), gt(gt),
         order_increase(order_increase)
       {
+        this->set_areas(areas);
+
         // If spline is HERMES_DEFAULT_SPLINE, initialize it to be constant 1.0.
-        if (c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
+        if(c_spline == HERMES_DEFAULT_SPLINE) this->spline_coeff = new CubicSpline(1.0);
       }
 
       template<typename Scalar>
       Scalar DefaultResidualMagnetostatics<Scalar>::value(int n, double *wt, Func<Scalar> *u_ext[], Func<double> *v,
-        Geom<double> *e, ExtData<Scalar> *ext) const
+        Geom<double> *e, Func<Scalar> **ext) const
       {
         Scalar planar_part = 0;
         Scalar axisym_part = 0;
@@ -154,9 +162,9 @@ namespace Hermes
           Scalar B_i = sqrt(sqr(u_ext[idx_i]->dx[i]) + sqr(u_ext[idx_i]->dy[i]));
           planar_part += wt[i] * const_coeff*spline_coeff->value(B_i) *
             (u_ext[idx_i]->dx[i] * v->dx[i] + u_ext[idx_i]->dy[i] * v->dy[i]);
-          if (gt == HERMES_AXISYM_X) axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->y[i]
+          if(gt == HERMES_AXISYM_X) axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->y[i]
           * u_ext[idx_i]->val[i] * v->dy[i];
-          else if (gt == HERMES_AXISYM_Y) axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->x[i]
+          else if(gt == HERMES_AXISYM_Y) axisym_part += wt[i] * const_coeff*spline_coeff->value(B_i) / e->x[i]
           * u_ext[idx_i]->val[i] * v->dx[i];
         }
         return planar_part + axisym_part;
@@ -164,7 +172,7 @@ namespace Hermes
 
       template<typename Scalar>
       Ord DefaultResidualMagnetostatics<Scalar>::ord(int n, double *wt, Func<Ord> *u_ext[], Func<Ord> *v,
-        Geom<Ord> *e, ExtData<Ord> *ext) const
+        Geom<Ord> *e, Func<Ord> **ext) const
       {
         Ord planar_part(0);
         for (int i = 0; i < n; i++)
@@ -178,11 +186,11 @@ namespace Hermes
 
       // This is to make the form usable in rk_time_step_newton().
       template<typename Scalar>
-      VectorFormVol<Scalar>* DefaultResidualMagnetostatics<Scalar>::clone()
+      VectorFormVol<Scalar>* DefaultResidualMagnetostatics<Scalar>::clone() const
       {
         return new DefaultResidualMagnetostatics(*this);
       }
-      
+
       template class HERMES_API DefaultJacobianMagnetostatics<double>;
       template class HERMES_API DefaultResidualMagnetostatics<double>;
     }

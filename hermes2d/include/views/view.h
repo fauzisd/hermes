@@ -22,7 +22,7 @@
 #ifndef __H2D_VIEW_H
 #define __H2D_VIEW_H
 
-#include "../hermes2d_common_defs.h"
+#include "../global.h"
 #include "vectorizer.h"
 #include "orderizer.h"
 
@@ -30,6 +30,7 @@ namespace Hermes
 {
   namespace Hermes2D
   {
+    /// Namespace containing Views classes, Linearizer classes, and support for these.
     namespace Views
     {
       // Constants
@@ -80,14 +81,14 @@ namespace Hermes
       /// to provide zooming and panning capabilities for use by the descendant
       /// classes, etc.
       ///
-      class HERMES_API View
+      class HERMES_API View : public Hermes::Mixins::TimeMeasurable, public Hermes::Mixins::Loggable
       {
       public:
 
         void init();
         View(const char* title, WinGeom* wg = NULL);
         View(char* title, WinGeom* wg = NULL);
-        virtual ~View();
+        ~View();
 
         int  create();
         void close();
@@ -123,13 +124,15 @@ namespace Hermes
 
         static void wait(const char* text); ///< Closes all views at once.
         static void wait(ViewWaitEvent wait_event = HERMES_WAIT_CLOSE, const char* text = NULL); ///< Waits for an event.
+        void draw_help();
+        virtual void reset_view(bool force_reset); ///< Resets view based on the axis-aligned bounding box of the mesh. Assumes that the bounding box is set up. Does not reset if view_not_reset is false.
 
       protected: //FPS measurement
 #define FPS_FRAME_SIZE 5
-        double rendering_frames[FPS_FRAME_SIZE]; ///< time spend in rendering of frames [in ms]
+        double rendering_frames[FPS_FRAME_SIZE]; ///< time spend in rendering of frames[in ms]
         int rendering_frames_top; ///< the new location of the next FPS
         void draw_fps(); ///< draws current FPS
-        static double get_tick_count(); ///< returns a current time [in ms]
+        static double get_tick_count(); ///< returns a current time[in ms]
 
       protected: //view
         bool view_not_reset; ///< True if the view was not reset and therefore it has to be.
@@ -143,7 +146,7 @@ namespace Hermes
         bool dragging, scaling;
 
         virtual void on_create(int output_id);
-        virtual void on_display() = 0;
+        virtual void on_display() {};
         virtual void on_reshape(int width, int height);
         virtual void on_mouse_move(int x, int y);
         virtual void on_left_mouse_down(int x, int y);
@@ -160,7 +163,6 @@ namespace Hermes
         virtual void on_entry(int state) {}
         virtual void on_close();
 
-        virtual void reset_view(bool force_reset); ///< Resets view based on the axis-aligned bounding box of the mesh. Assumes that the bounding box is set up. Does not reset if view_not_reset is false.
         virtual void update_layout(); ///< Updates layout, i.e., centers mesh.
 
       protected:
@@ -221,7 +223,6 @@ namespace Hermes
 
         void update_tex_adjust();
 
-        void draw_help();
         virtual const char* get_help_text() const = 0;
 
         friend void on_display_stub(void);
@@ -236,6 +237,51 @@ namespace Hermes
         friend int add_view_in_thread(void*);
         friend int remove_view_in_thread(void*);
         friend void on_create(int);
+      };
+#else
+class HERMES_API View
+      {
+      public:
+
+        void init() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        View() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        View(const char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        View(char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        int  create() { throw Hermes::Exceptions::Exception("GLUT disabled."); return -1; }
+        void close() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void refresh() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        /// Changes the window name (in its title-bar) to 'title'.
+        void set_title(const char* title) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        void set_min_max_range(double min, double max) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void auto_min_max_range() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void get_min_max_range(double& min, double& max) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        void show_scale(bool show = true) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_scale_position(int horz, int vert) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_scale_size(int width, int height, int numticks) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_scale_format(const char* fmt) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void fix_scale_width(int width = 80) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        /// Saves the current content of the window to a .BMP file.
+        /// If 'high_quality' is true, an anti-aliased frame is rendered and saved.
+        void save_screenshot(const char* bmpname, bool high_quality = false) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        /// Like save_screenshot(), but forms the file name in printf-style using the 'number'
+        /// parameter, e.g., format = "screen%03d.bmp" and number = 5 gives the file name "screen005.bmp".
+        void save_numbered_screenshot(const char* format, int number, bool high_quality = false) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        void set_palette(ViewPaletteType type) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_num_palette_steps(int num) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void set_palette_filter(bool linear) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        void wait_for_keypress(const char* text = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void wait_for_close() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        void wait_for_draw() { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        static void wait(const char* text) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        static void wait(ViewWaitEvent wait_event = HERMES_WAIT_CLOSE, const char* text = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
       };
 #endif
     }

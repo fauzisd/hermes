@@ -1,7 +1,7 @@
 // This file is part of HermesCommon
 //
 // Copyright (c) 2009 hp-FEM group at the University of Nevada, Reno (UNR).
-// Email: hpfem-group@unr.edu, home page: http://hpfem.org/.
+// Email: hpfem-group@unr.edu, home page: http:// hpfem.org/.
 //
 // Hermes2D is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published
@@ -17,176 +17,186 @@
 // along with Hermes2D; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-#include"exceptions.h"
+#include "exceptions.h"
+#include <string>
+#include "api.h"
+#include "callstack.h"
 
 namespace Hermes
 {
   namespace Exceptions
   {
-
-    Exception::Exception()
+    Exception::Exception() : std::exception(), message(new char[1000])
     {
-      message = NULL;
-      func = callstack.getLastFunc();
     }
 
-    Exception::Exception(const char * msg)
+    Exception::Exception(const char * msg, ...) : std::exception(), message(new char[1000])
     {
-      message = msg;
-      func = callstack.getLastFunc();
+      char text[1024];
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, msg);
+      vsprintf(text, msg, arglist);
+      va_end(arglist);
+
+      strcpy(message, text);
     }
 
-    void Exception::printMsg() const
+    void Exception::print_msg() const
     {
-      if (message)
-        fprintf(stderr, "%s\n", message);
+      if(message)
+        printf("Exception: %s\n", message);
       else
-        fprintf(stderr, "Default exception\n");
-      if (func)
-        fprintf(stderr, "in %s\n", func);
+        printf("Default exception\n");
+      if(Hermes::HermesCommonApi.get_integral_param_value(Hermes::exceptionsPrintCallstack) == 1)
+        CallStack::dump(0);
     }
 
-    const char * Exception::getFuncName() const
+    Exception* Exception::clone()
     {
-      return func;
+      return new Exception(*this);
     }
 
-    const char * Exception::getMsg() const
+    const char * Exception::what() const throw()
     {
-      return message;
+      char* messageWithReturn = new char[strlen(message)+2];
+      strcpy(messageWithReturn, message);
+      sprintf(messageWithReturn + strlen(message), "\n");
+      return messageWithReturn;
     }
 
-    NullException::NullException(int paramIdx)
+    NullException::NullException(int param_idx) : Exception()
     {
-      this->paramIdx = paramIdx;
-      this->itemIdx = -1;
+      this->param_idx = param_idx;
+      this->item_idx = -1;
       char * msg = new char[27];
-      sprintf(msg, "Parameter number %d is NULL", paramIdx);
+      sprintf(msg, "Parameter number %d is NULL", param_idx);
       message = msg;
     }
 
-    NullException::NullException(int paramIdx, int itemIdx)
+    NullException::NullException(int param_idx, int item_idx) : Exception()
     {
-      this->paramIdx = paramIdx;
-      this->itemIdx = itemIdx;
+      this->param_idx = param_idx;
+      this->item_idx = item_idx;
       char * msg = new char[55];
-      sprintf(msg, "Element number %d of parameter number %d is NULL", itemIdx, paramIdx);
+      sprintf(msg, "Element number %d of parameter number %d is NULL", item_idx, param_idx);
       message = msg;
     }
 
-    int NullException::getParamIdx() const
+    int NullException::get_param_idx() const
     {
-      return paramIdx;
+      return param_idx;
     }
 
-    int NullException::getItemIdx() const
+    int NullException::get_item_idx() const
     {
-      return itemIdx;
-    }
-
-    NullException::~NullException()
-    {
-      delete[] message;
+      return item_idx;
     }
 
     NullException::NullException(const NullException & e)
     {
-      char * msg= new char[strlen(e.getMsg())+1];
-      strcpy(msg, e.getMsg());
-      message=msg;
-      paramIdx=e.getParamIdx();
-      itemIdx=e.getItemIdx();
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+      param_idx = e.get_param_idx();
+      item_idx = e.get_item_idx();
     }
 
-    LengthException::LengthException(int paramIdx, int wrong, int right)
+    Exception* NullException::clone()
     {
-      fstParamIdx = paramIdx;
+      return new NullException(*this);
+    }
+
+    LengthException::LengthException(int param_idx, int wrong, int right) : Exception()
+    {
+      fst_param_idx = param_idx;
       this->wrong = wrong;
       this->right = right;
-      this->sndParamIdx = -1;
+      this->snd_param_idx = -1;
       char * msg = new char[60];
-      sprintf(msg, "Parameter number %d have length %d and should have %d", fstParamIdx, wrong, right);
+      sprintf(msg, "Parameter number %d have length %d and should have %d", fst_param_idx, wrong, right);
       message = msg;
     }
 
-    LengthException::LengthException(int fstParamIdx, int sndParamIdx, int first, int second)
+    LengthException::LengthException(int fst_param_idx, int snd_param_idx, int first, int second) : Exception()
     {
-      this->fstParamIdx=fstParamIdx;
-      this->sndParamIdx=sndParamIdx;
-      this->wrong=first;
-      this->right=second;
+      this->fst_param_idx = fst_param_idx;
+      this->snd_param_idx = snd_param_idx;
+      this->wrong = first;
+      this->right = second;
       char * msg = new char[110];
-      sprintf(msg, "Parameter number %d have length %d and parameter number %d have length %d. The lengths should be same", 
-            fstParamIdx, wrong, sndParamIdx, right);
+      sprintf(msg, "Parameter number %d have length %d and parameter number %d have length %d. The lengths should be same",
+            fst_param_idx, wrong, snd_param_idx, right);
       message = msg;
     }
 
-    int LengthException::getFirstParamIdx() const
+    int LengthException::get_first_param_idx() const
     {
-      return fstParamIdx;
+      return fst_param_idx;
     }
 
-    int LengthException::getSecondParamIdx() const
+    int LengthException::get_second_param_idx() const
     {
-      return sndParamIdx;
+      return snd_param_idx;
     }
 
-    int LengthException::getFirstLength() const
+    int LengthException::get_first_length() const
     {
       return wrong;
     }
 
-    int LengthException::getExpectedLength() const
+    int LengthException::get_expected_length() const
     {
       return right;
     }
 
-    LengthException::~LengthException()
+    LengthException::LengthException(const LengthException&e) : Exception()
     {
-      delete[]message;
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+      this->fst_param_idx = e.get_first_param_idx();
+      this->snd_param_idx = e.get_second_param_idx();
+      this->wrong = e.get_first_length();
+      this->right = e.get_expected_length();
     }
 
-    LengthException::LengthException(const LengthException&e)
+    Exception* LengthException::clone()
     {
-      char * msg= new char[strlen(e.getMsg())+1];
-      strcpy(msg, e.getMsg());
-      message=msg;
-      this->fstParamIdx=e.getFirstParamIdx();
-      this->sndParamIdx=e.getSecondParamIdx();
-      this->wrong=e.getFirstLength();
-      this->right=e.getExpectedLength();
+      return new LengthException(*this);
     }
 
-    LinearSolverException::LinearSolverException()
+    LinearMatrixSolverException::LinearMatrixSolverException() : Exception()
     {
       char * msg =  new char[22];
       sprintf(msg, "Linear solver failed.");
       message = msg;
     }
 
-    LinearSolverException::LinearSolverException(const char * reason)
+    LinearMatrixSolverException::LinearMatrixSolverException(const char * reason) : Exception()
     {
       char * msg =  new char[34 + strlen(reason)];
       sprintf(msg, "Linear solver failed because:\"%s\"", reason);
       message = msg;
     }
 
-    LinearSolverException::~LinearSolverException()
+    LinearMatrixSolverException::LinearMatrixSolverException(const LinearMatrixSolverException&e) : Exception()
     {
-      delete[] message;
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
     }
 
-    LinearSolverException::LinearSolverException(const LinearSolverException&e)
+    Exception* LinearMatrixSolverException::clone()
     {
-      char * msg= new char[strlen(e.getMsg())+1];
-      strcpy(msg, e.getMsg());
-      message=msg;
+      return new LinearMatrixSolverException(*this);
     }
-    
-    ValueException::ValueException(const char * name, double value, double allowed)
+
+    ValueException::ValueException(const char * name, double value, double allowed) : Exception()
     {
       char * msg =  new char[55 + strlen(name)];
-      if (value>allowed)
+      if(value>allowed)
         sprintf(msg, "Variable %s is %f but maximum allowed value is %f", name, value, allowed);
       else
         sprintf(msg, "Variable %s is %f but minimum allowed value is %f", name, value, allowed);
@@ -195,41 +205,172 @@ namespace Hermes
       this->allowed = allowed;
     }
 
-    ValueException::ValueException(const char * name, double value, double min, double max)
+    ValueException::ValueException(const char * name, double value, double min, double max) : Exception()
     {
-      char * msg= new char[70+strlen(name)];
+      char * msg = new char[70+strlen(name)];
       sprintf(msg, "Variable %s is %f allowed range is %f -- %f", name, value, min, max);
-      message=msg;
-      this->value=value;
-      if (value>min)
+      message = msg;
+      this->value = value;
+      if(value>min)
         this->allowed = max;
       else
         this->allowed = min;
     }
 
-    double ValueException::getValue() const
+    ValueException::ValueException(const char * name, std::string passed) : Exception()
+    {
+      char * msg = new char[70+strlen(name)];
+      sprintf(msg, "Variable %s does not support value %s.", name, passed.c_str());
+      message = msg;
+    }
+
+    double ValueException::get_value() const
     {
       return value;
     }
 
-    double ValueException::getAllowed() const
+    double ValueException::get_allowed() const
     {
       return allowed;
     }
 
-    ValueException::~ValueException()
-    {
-      delete[] message;
-    }
-
     ValueException::ValueException(const ValueException&e)
     {
-      char * msg= new char[strlen(e.getMsg())+1];
-      strcpy(msg, e.getMsg());
-      message=msg;
-      this->value=e.getValue();
-      this->allowed=e.getAllowed();
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+      this->value = e.get_value();
+      this->allowed = e.get_allowed();
     }
 
+    Exception* ValueException::clone()
+    {
+      return new ValueException(*this);
+    }
+
+    MethodNotOverridenException::MethodNotOverridenException(const char * name, ...) : Exception()
+    {
+      char* text = new char[1024];
+      sprintf(text, "Method not overriden: ");
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, name);
+      vsprintf(text = text + strlen("Method not overriden: "), name, arglist);
+      va_end(arglist);
+      message = text - strlen("Method not overriden: ");
+    }
+
+    MethodNotOverridenException::MethodNotOverridenException(const MethodNotOverridenException&e)
+    {
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+    }
+
+    Exception* MethodNotOverridenException::clone()
+    {
+      return new MethodNotOverridenException(*this);
+    }
+
+    MeshLoadFailureException::MeshLoadFailureException(const char * reason, ...) : Exception()
+    {
+      char * text = new char[strlen(reason)+1];
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, reason);
+      vsprintf(text, reason, arglist);
+      va_end(arglist);
+
+      message = text;
+    }
+
+    MeshLoadFailureException::MeshLoadFailureException(const MeshLoadFailureException&e)
+    {
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+    }
+
+    Exception* MeshLoadFailureException::clone()
+    {
+      return new MeshLoadFailureException(*this);
+    }
+
+    SpaceLoadFailureException::SpaceLoadFailureException(const char * reason, ...) : Exception()
+    {
+      char * text = new char[strlen(reason)+1];
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, reason);
+      vsprintf(text, reason, arglist);
+      va_end(arglist);
+
+      message = text;
+    }
+
+    SpaceLoadFailureException::SpaceLoadFailureException(const SpaceLoadFailureException&e)
+    {
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+    }
+
+    Exception* SpaceLoadFailureException::clone()
+    {
+      return new SpaceLoadFailureException(*this);
+    }
+
+    SolutionSaveFailureException::SolutionSaveFailureException(const char * reason, ...) : Exception()
+    {
+      char * text = new char[strlen(reason)+1];
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, reason);
+      vsprintf(text, reason, arglist);
+      va_end(arglist);
+
+      message = text;
+    }
+
+    SolutionSaveFailureException::SolutionSaveFailureException(const SolutionSaveFailureException&e)
+    {
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+    }
+
+    Exception* SolutionSaveFailureException::clone()
+    {
+      return new SolutionSaveFailureException(*this);
+    }
+
+    SolutionLoadFailureException::SolutionLoadFailureException(const char * reason, ...) : Exception()
+    {
+      char * text = new char[strlen(reason)+1];
+
+      // print the message
+      va_list arglist;
+      va_start(arglist, reason);
+      vsprintf(text, reason, arglist);
+      va_end(arglist);
+
+      message = text;
+    }
+
+    SolutionLoadFailureException::SolutionLoadFailureException(const SolutionLoadFailureException&e)
+    {
+      char * msg = new char[strlen(e.what())+1];
+      strcpy(msg, e.what());
+      message = msg;
+    }
+    
+    Exception* SolutionLoadFailureException::clone()
+    {
+      return new SolutionLoadFailureException(*this);
+    }
   }
 }

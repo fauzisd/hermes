@@ -23,7 +23,7 @@
 #ifndef NOGLUT
 
 #include <GL/freeglut.h>
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "order_view.h"
 #include "space.h"
 
@@ -33,7 +33,6 @@ namespace Hermes
   {
     namespace Views
     {
-
       OrderView::OrderView(const char* title, WinGeom* wg)
         : View(title, wg)
       {
@@ -70,10 +69,10 @@ namespace Hermes
       };
 
       template<typename Scalar>
-      void OrderView::show(Space<Scalar>* space)
+      void OrderView::show(const Space<Scalar>* space)
       {
-        if (!space->is_up_to_date())
-          error("The space is not up to date.");
+        if(!space->is_up_to_date())
+          throw Hermes::Exceptions::Exception("The space is not up to date.");
 
         ord.lock_data();
         ord.process_space(space);
@@ -93,16 +92,15 @@ namespace Hermes
         int min = 1, max = (int) vert[0][2];
         for (int i = 0; i < ord.get_num_vertices(); i++)
         {
-          if ((int) vert[i][2] < min) min = (int) vert[i][2];
-          if ((int) vert[i][2] > max) max = (int) vert[i][2];
+          if((int) vert[i][2] < min) min = (int) vert[i][2];
+          if((int) vert[i][2] > max) max = (int) vert[i][2];
         }
-        assert_msg(max <= H2DV_MAX_VIEWABLE_ORDER, "Maximum order in data is %d but OrderView supports only order %d", max, H2DV_MAX_VIEWABLE_ORDER);
 
         num_boxes = max - min + 1;
         char* buf = text_buffer;
         for (int i = 0; i < num_boxes; i++)
         {
-          if (pal_type == H2DV_PT_DEFAULT)
+          if(pal_type == H2DV_PT_DEFAULT)
           {
             order_colors[i + min][0] = (float) (order_palette[i + min] >> 16) / 0xff;
             order_colors[i + min][1] = (float) ((order_palette[i + min] >> 8) & 0xff) / 0xff;
@@ -120,6 +118,12 @@ namespace Hermes
 
         scale_height = num_boxes * scale_box_height + (num_boxes-1) * scale_box_skip;
         order_min = min;
+      }
+
+      void OrderView::set_b_orders(bool set)
+      {
+        b_orders = set;
+        refresh();
       }
 
       void OrderView::on_display()
@@ -155,14 +159,14 @@ namespace Hermes
         glEnd();
 
         // draw all edges
-        if (pal_type == 0)
+        if(pal_type == 0)
           glColor3f(0.4f, 0.4f, 0.4f);
-        else if (pal_type == 1)
+        else if(pal_type == 1)
           glColor3f(1.0f, 1.0f, 1.0f);
         else
           glColor3f(0.0f, 0.0f, 0.0f);
         glBegin(GL_LINES);
-        int3* edges = ord.get_edges();
+        int2* edges = ord.get_edges();
         for (i = 0; i < ord.get_num_edges(); i++)
         {
           glVertex2d(tvert[edges[i][0]][0], tvert[edges[i][0]][1]);
@@ -171,19 +175,19 @@ namespace Hermes
         glEnd();
 
         // draw labels
-        if (b_orders)
+        if(b_orders)
         {
           int* lvert;
           char** ltext;
           double2* lbox;
           int nl = ord.get_labels(lvert, ltext, lbox);
           for (i = 0; i < nl; i++)
-            if (lbox[i][0] * scale > get_text_width(ltext[i]) &&
+            if(lbox[i][0] * scale > get_text_width(ltext[i]) &&
               lbox[i][1] * scale > 13)
             {
               //color = get_palette_color((vert[lvert[i]][2] - 1) / 9.0);
               const float* color = order_colors[(int) vert[lvert[i]][2]];
-              if ((color[0]*0.39f + color[1]*0.50f + color[2]*0.11f) > 0.5f)
+              if((color[0]*0.39f + color[1]*0.50f + color[2]*0.11f) > 0.5f)
                 glColor3f(0, 0, 0);
               else
                 glColor3f(1, 1, 1);
@@ -228,9 +232,8 @@ namespace Hermes
             case H2DV_PT_HUESCALE: pal_type = H2DV_PT_GRAYSCALE; break;
             case H2DV_PT_GRAYSCALE: pal_type = H2DV_PT_INVGRAYSCALE; break;
             case H2DV_PT_INVGRAYSCALE: pal_type = H2DV_PT_DEFAULT; break;
-            default: error("Invalid palette type");
+            default: throw Hermes::Exceptions::Exception("Invalid palette type");
             }
-            debug_log("Switched to palette type %d in view \"%s\"", (int)pal_type, title.c_str());
             ord.lock_data();
             init_order_palette(ord.get_vertices());
             ord.unlock_data();
@@ -260,8 +263,8 @@ namespace Hermes
           "  Esc, Q - quit";
       }
 
-      template HERMES_API void OrderView::show<double>(Space<double>* space);
-      template HERMES_API void OrderView::show<std::complex<double> >(Space<std::complex<double> >* space);
+      template HERMES_API void OrderView::show<double>(const Space<double>* space);
+      template HERMES_API void OrderView::show<std::complex<double> >(const Space<std::complex<double> >* space);
     }
   }
 }

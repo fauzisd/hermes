@@ -22,12 +22,11 @@
 # include <sys/time.h>
 #endif
 
-#include "hermes2d_common_defs.h"
+#include "global.h"
 #include "view_support.h"
 #include "view.h"
 #include "solution.h"
 #include "view_data.cpp"
-#include "third_party_codes/trilinos-teuchos/Teuchos_stacktrace.hpp"
 
 namespace Hermes
 {
@@ -79,7 +78,7 @@ namespace Hermes
         output_id(-1),
         gl_pallete_tex_id(0)
       {
-        if (wg == NULL)
+        if(wg == NULL)
         {
           output_x = H2D_DEFAULT_X_POS;
           output_y = H2D_DEFAULT_Y_POS;
@@ -107,7 +106,7 @@ namespace Hermes
         output_id(-1),
         gl_pallete_tex_id(0)
       {
-        if (wg == NULL)
+        if(wg == NULL)
         {
           output_x = H2D_DEFAULT_X_POS;
           output_y = H2D_DEFAULT_Y_POS;
@@ -127,16 +126,13 @@ namespace Hermes
 
       View::~View()
       {
-        if (output_id >= 0)
-        {
-          debug_log("View is being destroyed; closing view \"%s\", window #%d", title.c_str(), output_id);
+        if(output_id >= 0)
           close();
-        }
       }
 
       int View::create()
       {
-        if (output_id < 0) //does not need thread protection because it is set up by a callback during call of add_view
+        if(output_id < 0) //does not need thread protection because it is set up by a callback during call of add_view
           return add_view(this, output_x, output_y, output_width, output_height, title.c_str());
         else
           return output_id;
@@ -144,7 +140,7 @@ namespace Hermes
 
       void View::close()
       {
-        if (output_id >= 0) //does not need thread protection because it is set up by a callback during call of add_view
+        if(output_id >= 0) //does not need thread protection because it is set up by a callback during call of add_view
           remove_view(output_id);
       }
 
@@ -158,7 +154,7 @@ namespace Hermes
         //prepare message
         std::stringstream str;
         str << "  << ";
-        if (text != NULL)
+        if(text != NULL)
           str << text;
         else
         {
@@ -166,7 +162,7 @@ namespace Hermes
           {
           case HERMES_WAIT_CLOSE: str << HERMES_WAIT_CLOSE_MSG; break;
           case HERMES_WAIT_KEYPRESS: str << HERMES_WAIT_KEYPRESS_MSG; break;
-          default: error("Unknown wait event"); break;
+          default: throw Hermes::Exceptions::Exception("Unknown wait event"); break;
           }
         }
         str << " >>" << std::endl;
@@ -176,7 +172,7 @@ namespace Hermes
         {
         case HERMES_WAIT_CLOSE: wait_for_all_views_close(str.str().c_str()); break;
         case HERMES_WAIT_KEYPRESS: wait_for_any_key(str.str().c_str()); break;
-        default: error("Unknown wait event"); break;
+        default: throw Hermes::Exceptions::Exception("Unknown wait event"); break;
         }
       }
 
@@ -184,16 +180,16 @@ namespace Hermes
       {
         bool do_refresh = true;
         view_sync.enter();
-        if (output_id < 0)
+        if(output_id < 0)
           do_refresh = false;
         view_sync.leave();
-        if (do_refresh)
+        if(do_refresh)
           refresh_view(output_id);
       }
 
       void View::reset_view(bool force_reset)
       {
-        if (force_reset || view_not_reset)
+        if(force_reset || view_not_reset)
         {
           double mesh_width  = vertices_max_x - vertices_min_x;
           double mesh_height = vertices_max_y - vertices_min_y;
@@ -202,7 +198,7 @@ namespace Hermes
           double usable_height = output_height - 2*margin;
 
           // align in the proper direction
-          if (usable_width / usable_height < mesh_width / mesh_height)
+          if(usable_width / usable_height < mesh_width / mesh_height)
             scale = usable_width / mesh_width;
           else
             scale = usable_height / mesh_height;
@@ -226,7 +222,6 @@ namespace Hermes
       void View::on_close()
       {
         view_sync.enter();
-        debug_log("Closed view \"%s\", window #%d", title.c_str(), output_id);
         output_id = -1;
         view_sync.leave();
       }
@@ -239,17 +234,17 @@ namespace Hermes
 
       void View::pre_display()
       {
-        //info("display: lock");
+        //this->info("display: lock");
         view_sync.enter();
 
         //begin time measuring
         double time_start = get_tick_count();
 
         //antialising is supported through accumulation buffer (FIXME: use ARB_MULTISAMPLE if available)
-        if (!hq_frame)
+        if(!hq_frame)
         {
           clear_background();
-          on_display();
+          this->on_display();
         }
         else
         {
@@ -257,8 +252,8 @@ namespace Hermes
           hq_frame = false;
         }
 
-        if (b_help) draw_help();
-        else if (b_scale) scale_dispatch();
+        if(b_help) draw_help();
+        else if(b_scale) scale_dispatch();
 
         //wait to finish
         glFinish();
@@ -267,7 +262,7 @@ namespace Hermes
         rendering_frames[rendering_frames_top] = get_tick_count() - time_start;
         rendering_frames_top = (rendering_frames_top + 1) % FPS_FRAME_SIZE;
 
-        if (want_screenshot)
+        if(want_screenshot)
         {
           glReadBuffer(GL_BACK_LEFT);
           save_screenshot_internal(screenshot_filename.c_str());
@@ -385,13 +380,13 @@ namespace Hermes
 
       void View::on_mouse_move(int x, int y)
       {
-        if (dragging)
+        if(dragging)
         {
           trans_x += (x - mouse_x);
           trans_y += (mouse_y - y);
           refresh();
         }
-        else if (scaling)
+        else if(scaling)
         {
           log_scale += (mouse_y - y);
           scale = pow(H2DV_SCALE_LOG_BASE, log_scale);
@@ -399,12 +394,12 @@ namespace Hermes
           trans_y = center_y - objy * scale - scy;
           refresh();
         }
-        else if (scale_dragging)
+        else if(scale_dragging)
         {
           int oldv = pos_vert, oldh = pos_horz;
           pos_horz = (x > output_width/2);
           pos_vert = (y < output_height/2);
-          if (pos_horz != oldh || pos_vert != oldv)
+          if(pos_horz != oldh || pos_vert != oldv)
           {
             update_layout();
             refresh();
@@ -415,7 +410,7 @@ namespace Hermes
           bool oldf = scale_focused;
           scale_focused = (x >= scale_x && x <= scale_x + scale_width &&
             y >= scale_y && y <= scale_y + scale_height);
-          if (oldf != scale_focused)
+          if(oldf != scale_focused)
             refresh();
         }
         mouse_x = x;
@@ -424,7 +419,7 @@ namespace Hermes
 
       void View::on_left_mouse_down(int x, int y)
       {
-        if (scale_focused)
+        if(scale_focused)
           scale_dragging = true;
         else
           dragging = true;
@@ -494,7 +489,7 @@ namespace Hermes
             case H2DV_PT_HUESCALE: pal_type = H2DV_PT_GRAYSCALE; break;
             case H2DV_PT_GRAYSCALE: pal_type = H2DV_PT_INVGRAYSCALE; break;
             case H2DV_PT_INVGRAYSCALE: pal_type = H2DV_PT_DEFAULT; break;
-            default: error("Invalid palette type");
+            default: throw Hermes::Exceptions::Exception("Invalid palette type");
             }
             */
             switch(pal_type)
@@ -502,9 +497,8 @@ namespace Hermes
             case H2DV_PT_HUESCALE: pal_type = H2DV_PT_GRAYSCALE; break;
             case H2DV_PT_GRAYSCALE: pal_type = H2DV_PT_INVGRAYSCALE; break;
             case H2DV_PT_INVGRAYSCALE: pal_type = H2DV_PT_HUESCALE; break;
-            default: error("Invalid palette type");
+            default: throw Hermes::Exceptions::Exception("Invalid palette type");
             }
-            debug_log("Switched to a palette type %d in view \"%s\"", (int)pal_type, title.c_str());
             create_gl_palette();
             refresh();
             break;
@@ -531,14 +525,14 @@ namespace Hermes
 
       void View::wait_for_keypress(const char* text)
       {
-        warn("Function View::wait_for_keypress deprecated: use View::wait instead");
+        this->warn("Function View::wait_for_keypress deprecated: use View::wait instead");
         View::wait(HERMES_WAIT_KEYPRESS, text);
       }
 
       void View::wait_for_close()
       {
         view_sync.enter();
-        if (output_id >= 0)
+        if(output_id >= 0)
           view_sync.wait_close();
         view_sync.leave();
       }
@@ -551,9 +545,9 @@ namespace Hermes
         //sighandler_t old_segv, old_abrt;
         //old_segv = signal(SIGSEGV, SIG_DFL);
         //old_abrt = signal(SIGABRT, SIG_DFL);
-
+        
         view_sync.enter();
-        if (output_id >= 0 && !frame_ready)
+        if(output_id >= 0 && !frame_ready)
           view_sync.wait_drawing_fisnihed();
         view_sync.leave();
 
@@ -561,7 +555,6 @@ namespace Hermes
         //signal(SIGSEGV, old_segv);
         //signal(SIGABRT, old_abrt);
         // So we just restore it by calling the original handler:
-        Teuchos::print_stack_on_segfault();
       }
 
       double View::get_tick_count()
@@ -586,31 +579,31 @@ namespace Hermes
         this->title = title;
 
         view_sync.enter();
-        if (output_id < 0)
+        if(output_id < 0)
           // If the window does not exist, do nothing else and wait until it is created.
           do_set_title = false;
 
         view_sync.leave();
 
         // If the window already exists, show the new title in its header.
-        if (do_set_title)
+        if(do_set_title)
           set_view_title(output_id, title);
       }
 
       void View::get_palette_color(double x, float* gl_color)
       {
-        if (pal_type == H2DV_PT_HUESCALE || pal_type == H2DV_PT_DEFAULT) { //default color
-          if (x < 0.0) x = 0.0;
-          else if (x > 1.0) x = 1.0;
+        if(pal_type == H2DV_PT_HUESCALE || pal_type == H2DV_PT_DEFAULT) { //default color
+          if(x < 0.0) x = 0.0;
+          else if(x > 1.0) x = 1.0;
           x *= num_pal_entries;
           int n = (int)x;
           gl_color[0] = palette_data[n][0];
           gl_color[1] = palette_data[n][1];
           gl_color[2] = palette_data[n][2];
         }
-        else if (pal_type == H2DV_PT_GRAYSCALE)
+        else if(pal_type == H2DV_PT_GRAYSCALE)
           gl_color[0] = gl_color[1] = gl_color[2] = (float)x;
-        else if (pal_type == H2DV_PT_INVGRAYSCALE)
+        else if(pal_type == H2DV_PT_INVGRAYSCALE)
           gl_color[0] = gl_color[1] = gl_color[2] = (float)(1.0 - x);
         else
           gl_color[0] = gl_color[1] = gl_color[2] = 1.0f;
@@ -618,13 +611,13 @@ namespace Hermes
 
       void View::set_num_palette_steps(int num)
       {
-        if (num < 2) num = 2;
-        if (num > 256) num = 256;
+        if(num < 2) num = 2;
+        if(num > 256) num = 256;
         pal_steps = num;
         update_tex_adjust();
 
         view_sync.enter();
-        if (output_id >= 0)
+        if(output_id >= 0)
           create_gl_palette();
         view_sync.leave();
 
@@ -646,7 +639,7 @@ namespace Hermes
         for (i = pal_steps; i < 256; i++)
           memcpy(palette[i], palette[pal_steps-1], 3);
 
-        if (gl_pallete_tex_id == 0)
+        if(gl_pallete_tex_id == 0)
           glGenTextures(1, &gl_pallete_tex_id);
         glBindTexture(GL_TEXTURE_1D, gl_pallete_tex_id);
         glTexImage1D(GL_TEXTURE_1D, 0, 3, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, palette);
@@ -660,7 +653,7 @@ namespace Hermes
 
         pal_filter = linear ? GL_LINEAR : GL_NEAREST;
 
-        if (gl_pallete_tex_id == 0)
+        if(gl_pallete_tex_id == 0)
           glGenTextures(1, &gl_pallete_tex_id);
         glBindTexture(GL_TEXTURE_1D, gl_pallete_tex_id);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, pal_filter);
@@ -674,11 +667,9 @@ namespace Hermes
 
       void View::set_palette(ViewPaletteType type)
       {
-        assert_msg(type >= H2DV_PT_DEFAULT && type < H2DV_PT_MAX_ID, "Unknown palette type %d", (int)type);
-
         view_sync.enter();
         pal_type = type;
-        if (output_id >= 0)
+        if(output_id >= 0)
           create_gl_palette();
         view_sync.leave();
 
@@ -688,7 +679,7 @@ namespace Hermes
 
       void View::update_tex_adjust()
       {
-        if (pal_filter == GL_LINEAR)
+        if(pal_filter == GL_LINEAR)
         {
           tex_scale = (double) (pal_steps-1) / 256.0;
           tex_shift = 0.5 / 256.0;
@@ -702,16 +693,16 @@ namespace Hermes
 
       void View::set_min_max_range(double min, double max)
       {
-        if (max < min)
+        if(max < min)
         {
           std::swap(min, max);
-          warn("Upper bound set below the lower bound: reversing to (%f, %f).", min, max);
+          this->warn("Upper bound set below the lower bound: reversing to (%f, %f).", min, max);
         }
         view_sync.enter();
         range_min = min;
         range_max = max;
         range_auto = false;
-        if (output_id >= 0)
+        if(output_id >= 0)
           update_layout();
         view_sync.leave();
         refresh();
@@ -721,7 +712,7 @@ namespace Hermes
       {
         view_sync.enter();
         range_auto = true;
-        if (output_id >= 0)
+        if(output_id >= 0)
           update_layout();
         view_sync.leave();
 
@@ -739,10 +730,10 @@ namespace Hermes
       void View::draw_text(double x, double y, const char* text, int align)
       {
         void* font = GLUT_BITMAP_9_BY_15;
-        if (align > -1)
+        if(align > -1)
         {
           int width = glutBitmapLength(font, (const unsigned char*) text);
-          if (align == 1) x -= width; // align right
+          if(align == 1) x -= width; // align right
           else x -= (double) width / 2; // center
         }
         y += 5; //(double) glutBitmapHeight(font) / 2 - 1;
@@ -762,6 +753,7 @@ namespace Hermes
 
       void View::draw_help()
       {
+        view_sync.enter();
         set_ortho_projection(true);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_LIGHTING);
@@ -772,7 +764,7 @@ namespace Hermes
 
         int n = 1;
         for (const char* p = text; *p; p++)
-          if (*p == '\n') n++;
+          if(*p == '\n') n++;
 
         int width = get_text_width(text);
         int height = n * glutBitmapHeight(GLUT_BITMAP_9_BY_15);
@@ -791,6 +783,8 @@ namespace Hermes
         glDisable(GL_BLEND);
         glColor3f(0, 0, 0);
         draw_text(x + b, y + b+7, text);
+        view_sync.leave();
+        refresh();
       }
 
       char* View::get_screenshot_file_name()
@@ -801,7 +795,7 @@ namespace Hermes
         {
           sprintf(file_name, "screen%03d.bmp", screenshot_no);
           FILE *f = fopen(file_name, "r");
-          if (f == NULL)
+          if(f == NULL)
             got_file_name = true;
           else
             fclose(f);
@@ -849,20 +843,20 @@ namespace Hermes
 
         // alloc memory for pixel data (4 bytes per pixel)
         char* pixels = NULL;
-        if ((pixels = (char*) malloc(4 * output_width * output_height)) == NULL)
-          error("Could not allocate memory for pixel data");
+        if((pixels = (char*) malloc(4 * output_width * output_height)) == NULL)
+          throw Hermes::Exceptions::Exception("Could not allocate memory for pixel data");
 
         // get pixels from framebuffer
 #ifdef GL_BGRA_EXT
         glReadPixels(0, 0, output_width, output_height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels);
 #else
         glReadPixels(0, 0, output_width, output_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels); // FIXME!!!
-        warn("BGRA format not supported. Saved image will have inverted colors");
+        this->warn("BGRA format not supported. Saved image will have inverted colors");
 #endif
         // opening file for binary writing
         FILE* file = fopen(file_name, "wb");
-        if (file == NULL)
-          error("Could not open '%s' for writing", file_name);
+        if(file == NULL)
+          throw Hermes::Exceptions::Exception("Could not open '%s' for writing", file_name);
 
         // fill in bitmap header
         file_header.type = BITMAP_ID;
@@ -871,8 +865,11 @@ namespace Hermes
         file_header.reserved1 = file_header.reserved2 = 0;
         file_header.off_bits = 14 + 40; // length of both headers
 
-        if (fwrite(&file_header, sizeof(file_header), 1, file) != 1)
-          error("Error writing bitmap header");
+        if(fwrite(&file_header, sizeof(file_header), 1, file) != 1)
+        {
+          fclose(file);
+          throw Hermes::Exceptions::Exception("Error writing bitmap header");
+        }
 
         // fill in bitmap info header
         info_header.size = sizeof(BitmapInfoHeader);
@@ -887,12 +884,18 @@ namespace Hermes
         info_header.clr_used = 0;
         info_header.clr_important = 0;
 
-        if (fwrite(&info_header, sizeof(info_header), 1, file) != 1)
-          error("Error writing bitmap header");
+        if(fwrite(&info_header, sizeof(info_header), 1, file) != 1)
+        {
+          fclose(file);
+          throw Hermes::Exceptions::Exception("Error writing bitmap header");
+        }
 
         // write image pixels
-        if (fwrite((GLubyte*) pixels, 1, info_header.size_image, file) != info_header.size_image)
-          error("Error writing pixel data");
+        if(fwrite((GLubyte*) pixels, 1, info_header.size_image, file) != info_header.size_image)
+        {
+          fclose(file);
+          throw Hermes::Exceptions::Exception("Error writing pixel data");
+        }
 
         fclose(file);
         free((void*) pixels);
@@ -902,7 +905,7 @@ namespace Hermes
       void View::save_screenshot(const char* bmpname, bool high_quality)
       {
         view_sync.enter();
-        if (output_id >= 0) { //set variable neccessary to create a screenshot
+        if(output_id >= 0) { //set variable neccessary to create a screenshot
           hq_frame = high_quality;
           want_screenshot = true;
           screenshot_filename = bmpname;
@@ -926,11 +929,11 @@ namespace Hermes
         for (int i = 0; i <= scale_numticks + 1; i++)
         {
           double value = range_min + (double) i * (range_max - range_min) / (scale_numticks + 1);
-          if (fabs(value) < 1e-8) value = 0.0;
+          if(fabs(value) < 1e-8) value = 0.0;
           char text[50];
           sprintf(text, scale_fmt, value);
           int w = get_text_width(text);
-          if (w > result) result = w;
+          if(w > result) result = w;
         }
         return result;
       }
@@ -983,7 +986,7 @@ namespace Hermes
 
         // focus
         glDisable(GL_TEXTURE_1D);
-        if (scale_focused)
+        if(scale_focused)
         {
           glEnable(GL_BLEND);
           glColor4f(1.0f, 1.0f, 1.0f, 0.3f);
@@ -1015,11 +1018,11 @@ namespace Hermes
         for (i = 0; i <= scale_numticks + 1; i++)
         {
           double value = range_min + (double) i * (range_max - range_min) / (scale_numticks + 1);
-          if (fabs(value) < 1e-8) value = 0.0;
+          if(fabs(value) < 1e-8) value = 0.0;
           char text[50];
           sprintf(text, scale_fmt, value);
           y0 = scale_y + scale_height - (double) i * scale_height / (scale_numticks + 1);
-          if (righttext)
+          if(righttext)
             draw_text(scale_x + scale_width + 8, y0, text);
           else
             draw_text(scale_x - 8, y0, text, 1);
@@ -1061,7 +1064,7 @@ namespace Hermes
 
           const float* color = boxcolors[numboxes-1-i];
           float bcolor[3] = { color[0], color[1], color[2] };
-          if (scale_focused)
+          if(scale_focused)
           {
             bcolor[0] = color[0]*0.7f + 1.0f*0.3f;
             bcolor[1] = color[1]*0.7f + 1.0f*0.3f;
@@ -1076,7 +1079,7 @@ namespace Hermes
           glVertex2d(scale_x + scale_width, y + 1);
           glEnd();
 
-          if ((color[0] + color[1] + color[2]) / 3 > 0.5)
+          if((color[0] + color[1] + color[2]) / 3 > 0.5)
             glColor3f(0, 0, 0);
           else
             glColor3f(1, 1, 1);
@@ -1098,17 +1101,17 @@ namespace Hermes
       void View::update_layout()
       {
         lspace = rspace = labels_width = 0;
-        if (b_scale)
+        if(b_scale)
         {
           labels_width = scale_fixed_width;
-          if (labels_width < 0) labels_width = measure_scale_labels();
+          if(labels_width < 0) labels_width = measure_scale_labels();
           int space = scale_width + 8 + labels_width + margin;
-          if (pos_horz == 0)
+          if(pos_horz == 0)
           { lspace = space;  scale_x = margin; }
           else
           { rspace = space;  scale_x = output_width - margin - scale_width; }
 
-          if (pos_vert == 0)
+          if(pos_vert == 0)
             scale_y = output_height - margin - scale_height;
           else
             scale_y = margin;
@@ -1122,7 +1125,7 @@ namespace Hermes
       {
         view_sync.enter();
         b_scale = show;
-        if (output_id >= 0)
+        if(output_id >= 0)
           update_layout();
         view_sync.leave();
         refresh();
@@ -1133,7 +1136,7 @@ namespace Hermes
         view_sync.enter();
         pos_horz = horz;
         pos_vert = vert;
-        if (output_id >= 0)
+        if(output_id >= 0)
           update_layout();
         view_sync.leave();
         refresh();

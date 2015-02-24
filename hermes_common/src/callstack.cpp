@@ -20,96 +20,39 @@
     \brief File containing functionality for investigating call stack.
 */
 #include "callstack.h"
-#include "third_party_codes/trilinos-teuchos/Teuchos_stacktrace.hpp"
 #include <signal.h>
 #include <stdlib.h>
 
-/// Definition of the global CallStack instance.
-CallStack callstack;
-
-CallStackObj::CallStackObj(int ln, const char *func, const char *file)
-{
-  this->line = ln;
-  this->func = func;
-  this->file = file;
-
-  // add this object to the call stack
-  if (callstack.size < callstack.max_size)
+// Basically GNU stuff
+#ifdef EXECINFO_FOUND
+  #include <execinfo.h>
+  void handler(int sig)
   {
-    callstack.stack[callstack.size] = this;
-    callstack.size++;
+    void *array[20];
+    size_t size;
+
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 20);
+
+    // print out all the frames to stderr
+    printf("Error: signal %d:\n", sig);
+    backtrace_symbols_fd(array, size, 2);
+    exit(1);
   }
-}
 
-CallStackObj::~CallStackObj()
-{
-  // remove the object only if it is on the top of the call stack
-  if (callstack.size > 0 && callstack.stack[callstack.size - 1] == this)
-  {
-    callstack.size--;
-    callstack.stack[callstack.size] = NULL;
-  }
-}
-
-static void sighandler(int signo)
-{
-  const char *sig_name[64];
-
-  sig_name[SIGABRT] = "Abort";
-  sig_name[SIGSEGV] = "Segmentation violation";
-
-  fprintf(stderr, "Caught signal %d (%s)\n", signo, sig_name[signo]);
-  callstack.dump();
-  exit(EXIT_FAILURE);
-}
-
-void callstack_initialize()
-{
-  // install our signal handlers
-#ifdef HERMES_USE_TEUCHOS_STACKTRACE
-  Teuchos::print_stack_on_segfault();
-#else
-  signal(SIGSEGV, sighandler);
-  signal(SIGABRT, sighandler);
 #endif
-}
 
-void callstack_finalize()
+void CallStack::dump(int signalCode)
 {
-}
-
-CallStack::CallStack(int max_size)
-{
-  this->max_size = max_size;
-  this->size = 0;
-  this->stack = new CallStackObj *[max_size];
-
-  // initialize signals
-  callstack_initialize();
-}
-
-CallStack::~CallStack()
-{
-  delete [] stack;
-}
-
-void CallStack::dump()
-{
-  if (size > 0)
-  {
-    fprintf(stderr, "Call stack:\n");
-    for (int i = size - 1; i >= 0; i--)
-      fprintf(stderr, "  %s:%d: %s\n", stack[i]->file, stack[i]->line, stack[i]->func);
-  }
-  else
-  {
-    fprintf(stderr, "No call stack available.\n");
-  }
-}
-const char * CallStack::getLastFunc()
-{
-  if (size>0)
-    return stack[size-1]->func;
-  else
-    return NULL;
+// Basically WIN stuff
+#ifdef WITH_STACKTRACE
+  #ifdef WIN32
+    MyStackWalker sw;
+    sw.ShowCallstack();
+  #else
+    #ifdef EXECINFO_FOUND
+      handler(signalCode);
+    #endif
+  #endif
+#endif
 }

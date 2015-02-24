@@ -24,7 +24,7 @@
 #include "../config.h"
 #ifdef HAVE_AZTECOO
 #include "epetra.h"
-#include "linear_solver.h"
+#include "linear_matrix_solver.h"
 #include "precond_ifpack.h"
 #include <AztecOO.h>
 
@@ -39,9 +39,9 @@ namespace Hermes
     class HERMES_API AztecOOSolver : public IterSolver<Scalar>
     {
     public:
-      
+
       /// Set the type of the solver
-      /// @param[in] solver - name of the solver [ gmres | cg | cgs | tfqmr | bicgstab ]
+      /// @param[in] solver - name of the solver[ gmres | cg | cgs | tfqmr | bicgstab ]
       void set_solver(const char *solver);
       /// Set the convergence tolerance
       /// @param[in] tol - the tolerance to set
@@ -51,23 +51,20 @@ namespace Hermes
       void set_max_iters(int iters);
 
       /// Set Aztec internal preconditioner
-      /// @param[in] name - name of the preconditioner [ none | jacobi | neumann | least-squares ]
+      /// @param[in] name - name of the preconditioner[ none | jacobi | neumann | least-squares ]
       virtual void set_precond(const char *name);
-      
+
       AztecOOSolver(EpetraMatrix<Scalar> *m, EpetraVector<Scalar> *rhs);
       virtual ~AztecOOSolver();
       virtual bool solve();
+      virtual int get_matrix_size();
     protected:
       virtual int get_num_iters();
       virtual double get_residual();
 
       /// \brief Set preconditioner from IFPACK.
       /// @param[in] pc - IFPACK preconditioner
-#ifdef HAVE_TEUCHOS
-      virtual void set_precond(Teuchos::RCP<Precond<Scalar> > &pc);
-#else
       virtual void set_precond(Precond<Scalar> *pc);
-#endif
 
       /// Option setting function
       void set_option(int option, int value);
@@ -79,12 +76,9 @@ namespace Hermes
       EpetraMatrix<Scalar> *m;
       EpetraVector<Scalar> *rhs;
 
-#ifdef HAVE_TEUCHOS
-      Teuchos::RCP<Precond<Scalar> > pc;
-#else
       Precond<Scalar> *pc;
-#endif
-      template<typename T> friend LinearSolver<T>* create_linear_solver(Hermes::MatrixSolverType matrix_solver_type, Matrix<T>* matrix, Vector<T>* rhs);
+
+      template<typename T> friend LinearMatrixSolver<T>* create_linear_solver(Matrix<T>* matrix, Vector<T>* rhs);
     };
   }
 }

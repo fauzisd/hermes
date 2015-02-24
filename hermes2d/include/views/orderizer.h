@@ -35,11 +35,14 @@ namespace Hermes
         ~Orderizer();
 
         template<typename Scalar>
-        void process_space(Space<Scalar>* space);
+        void process_space(const Space<Scalar>* space);
 
         /// Saves a MeshFunction (Solution, Filter) in VTK format.
         template<typename Scalar>
-        void save_orders_vtk(Space<Scalar>* space, const char* file_name);
+        void save_orders_vtk(const Space<Scalar>* space, const char* file_name);
+
+        template<typename Scalar>
+        void save_mesh_vtk(const Space<Scalar>* space, const char* file_name);
 
         int get_labels(int*& lvert, char**& ltext, double2*& lbox) const;
 
@@ -48,17 +51,20 @@ namespace Hermes
 
         int get_num_vertices();
         double3* get_vertices();
+
+        void free();
       protected:
         char  buffer[1000];
         char* labels[11][11];
 
+        int* tris_orders;
         double3* verts;  ///< vertices: (x, y, value) triplets
         int  label_size, label_count, cl1, cl2, cl3;
         int* lvert;
         char** ltext;
         double2* lbox;
 
-        void add_triangle(int iv0, int iv1, int iv2);
+        void add_triangle(int iv0, int iv1, int iv2, int order, int marker);
 
         void add_edge(int iv1, int iv2, int marker);
 

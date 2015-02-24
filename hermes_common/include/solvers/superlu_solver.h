@@ -25,7 +25,7 @@
 #include "config.h"
 #ifdef WITH_SUPERLU
 typedef int int_t;
-#include "linear_solver.h"
+#include "linear_matrix_solver.h"
 #include "matrix.h"
 
 #include <supermatrix.h>
@@ -110,7 +110,7 @@ namespace Hermes
       virtual void add(unsigned int m, unsigned int n, Scalar v);
       virtual void add_to_diagonal(Scalar v);
       virtual void add(unsigned int m, unsigned int n, Scalar **mat, int *rows, int *cols);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
       virtual unsigned int get_matrix_size() const;
       virtual unsigned int get_nnz() const;
       virtual double get_fill_in() const;
@@ -154,6 +154,7 @@ namespace Hermes
       unsigned int nnz;
 
       friend class Solvers::SuperLUSolver<Scalar>;
+      template<typename T> friend SparseMatrix<T>*  create_matrix();
     };
 
     /** \brief Vector used with SuperLU solver */
@@ -175,7 +176,7 @@ namespace Hermes
       virtual void add(unsigned int n, unsigned int *idx, Scalar *y);
       virtual void add_vector(Vector<Scalar>* vec);
       virtual void add_vector(Scalar* vec);
-      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE);
+      virtual bool dump(FILE *file, const char *var_name, EMatrixDumpFormat fmt = DF_MATLAB_SPARSE, char* number_format = "%lf");
 
     protected:
       /// SUPERLU specific data structures for storing the rhs.
@@ -183,26 +184,15 @@ namespace Hermes
 
       friend class Solvers::SuperLUSolver<Scalar>;
     };
-
   }
   namespace Solvers
   {
-
     /// Encapsulation of SUPERLU linear solver.
     ///
     /// @ingroup solvers
     template <typename Scalar>
     class HERMES_API SuperLUSolver : public DirectSolver<Scalar>
     {
-    private:
-#ifndef SLU_MT
-      void create_csc_matrix (SuperMatrix *A, int m, int n, int nnz, typename SuperLuType<Scalar>::Scalar *nzval, int *rowind, int *colptr,
-        Stype_t stype, Dtype_t dtype, Mtype_t mtype);
-      void  solver_driver (superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r, int *etree, char *equed, double *R,
-        double *C, SuperMatrix *L, SuperMatrix *U, void *work, int lwork, SuperMatrix *B, SuperMatrix *X, double *recip_pivot_growth,
-        double *rcond, double *ferr, double *berr, slu_memusage_t *mem_usage, SuperLUStat_t *stat, int *info);
-      void create_dense_matrix (SuperMatrix *X, int m, int n, typename SuperLuType<Scalar>::Scalar *x, int ldx, Stype_t stype, Dtype_t dtype, Mtype_t mtype);
-#endif  //SLU_MT
     public:
       /// Constructor of SuperLU solver.
       /// @param[in] m pointer to matrix
@@ -211,6 +201,7 @@ namespace Hermes
       virtual ~SuperLUSolver();
 
       virtual bool solve();
+      virtual int get_matrix_size();
 
     protected:
       /// Matrix to solve.
@@ -246,6 +237,15 @@ namespace Hermes
       int *etree;                   ///< Elimination tree of Pc'*A'*A*Pc.
       slu_options_t options;        ///< Structure holding the input options for the solver.
 
+      private:
+#ifndef SLU_MT
+      void create_csc_matrix (SuperMatrix *A, int m, int n, int nnz, typename SuperLuType<Scalar>::Scalar *nzval, int *rowind, int *colptr,
+        Stype_t stype, Dtype_t dtype, Mtype_t mtype);
+      void  solver_driver (superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r, int *etree, char *equed, double *R,
+        double *C, SuperMatrix *L, SuperMatrix *U, void *work, int lwork, SuperMatrix *B, SuperMatrix *X, double *recip_pivot_growth,
+        double *rcond, double *ferr, double *berr, slu_memusage_t *mem_usage, SuperLUStat_t *stat, int *info);
+      void create_dense_matrix (SuperMatrix *X, int m, int n, typename SuperLuType<Scalar>::Scalar *x, int ldx, Stype_t stype, Dtype_t dtype, Mtype_t mtype);
+#endif  //SLU_MT
 
 #ifndef SLU_MT
       char equed[1];              ///< Form of equilibration that was done on A.
@@ -253,6 +253,7 @@ namespace Hermes
       equed_t equed;              ///< Form of equilibration that was done on A.
       SuperMatrix AC;             ///< Matrix A permuted by perm_c.
 #endif //SLU_MT
+      template<typename T> friend LinearMatrixSolver<T>* create_linear_solver(Matrix<T>* matrix, Vector<T>* rhs);
     };
   }
 }

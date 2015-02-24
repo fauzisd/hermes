@@ -31,7 +31,7 @@ namespace Hermes
     {
       // you can define NOGLUT to turn off all OpenGL stuff in Hermes2D
 #ifndef NOGLUT
-      
+
       static const int H2DV_MAX_VIEWABLE_ORDER = 10; ///< Maximum viewable order.
 
       /// \brief Displays the polynomial degrees of elements.
@@ -44,13 +44,13 @@ namespace Hermes
 
         OrderView(const char* title = "OrderView", WinGeom* wg = NULL);
         //#ifndef _MSC_VER
-        //	OrderView(const char* title = "OrderView", WinGeom* wg = NULL);
+        //  OrderView(const char* title = "OrderView", WinGeom* wg = NULL);
         //#endif
         OrderView(char* title, WinGeom* wg = NULL);
 
         template<typename Scalar>
-        void show(Space<Scalar>* space);
-
+        void show(const Space<Scalar>* space);
+        void set_b_orders(bool set);
       protected:
 
         Orderizer ord;
@@ -68,7 +68,20 @@ namespace Hermes
         virtual void scale_dispatch();
         virtual int measure_scale_labels();
         virtual const char* get_help_text() const;
+      };
+#else
+      class HERMES_API OrderView : public View
+      {
+      public:
 
+        OrderView(const char* title = "OrderView", WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+        //#ifndef _MSC_VER
+        //  OrderView(const char* title = "OrderView", WinGeom* wg = NULL);
+        //#endif
+        OrderView(char* title, WinGeom* wg = NULL) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
+
+        template<typename Scalar>
+        void show(const Space<Scalar>* space) { throw Hermes::Exceptions::Exception("GLUT disabled."); }
       };
 #endif
     }
